@@ -1,4 +1,14 @@
 fastapi
 uvicorn[standard]
+
+# Database
+sqlalchemy
 psycopg[binary]
+alembic
+
+# Authentication
+pyjwt
+pwdlib[argon2]
+
+# MQTT
 paho-mqtt

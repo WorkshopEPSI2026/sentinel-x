@@ -1,0 +1,48 @@
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    action: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    resource_type: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    resource_id: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+
+    user_agent: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )
