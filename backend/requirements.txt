@@ -9,6 +9,7 @@ alembic
 # Authentication
 pyjwt
 pwdlib[argon2]
+email-validator
 
 # MQTT
 paho-mqtt
