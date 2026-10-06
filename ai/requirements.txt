@@ -1,5 +1,5 @@
 fastapi
-uvicorn[standard]
-python-multipart
-opencv-python-headless
+uvicorn
 ultralytics
+pillow
+python-multipart

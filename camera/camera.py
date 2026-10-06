@@ -2,56 +2,85 @@ import cv2
 import requests
 import time
 
-AI_URL = "http://localhost:8001/process"
+# Adresse de ton service YOLO
+AI_URL = "http://127.0.0.1:8001/detect"
 
-cap = cv2.VideoCapture(1)
+# Ouvre la webcam
+camera = cv2.VideoCapture(1)
 
-if not cap.isOpened():
-    print("Erreur : impossible d'ouvrir la webcam USB")
+if not camera.isOpened():
+    print("Erreur : impossible d'ouvrir la webcam.")
     exit()
 
-print("Webcam USB ouverte avec succès.")
+print("Webcam démarrée.")
+print("Une image sera envoyée à YOLO toutes les 1 secondes.")
+print("Appuie sur Q pour arrêter.")
 
-last_sent = 0
-interval = 1  # envoyer une image toutes les 1 seconde
+last_send = 0
 
 while True:
-    ret, frame = cap.read()
+
+    # Lire une image de la webcam
+    ret, frame = camera.read()
 
     if not ret:
-        print("Erreur lors de la récupération de l'image")
+        print("Erreur : impossible de récupérer l'image.")
         break
 
-    cv2.imshow("Sentinel-X - Webcam", frame)
+    # Afficher la webcam
+    cv2.imshow("Sentinel-X - Camera", frame)
 
+    # Temps actuel
     current_time = time.time()
 
-    if current_time - last_sent >= interval:
-        try:
-            success, buffer = cv2.imencode(".jpg", frame)
+    # Envoyer une image toutes les 1 secondes
+    if current_time - last_send >= 1:
 
-            if success:
+        last_send = current_time
+
+        # Convertir l'image en JPEG
+        success, buffer = cv2.imencode(".jpg", frame)
+
+        if success:
+
+            files = {
+                "file": (
+                    "camera.jpg",
+                    buffer.tobytes(),
+                    "image/jpeg"
+                )
+            }
+
+            try:
+
                 response = requests.post(
                     AI_URL,
-                    files={
-                        "file": (
-                            "frame.jpg",
-                            buffer.tobytes(),
-                            "image/jpeg"
-                        )
-                    },
-                    timeout=5
+                    files=files,
+                    timeout=10
                 )
 
-                print("AI :", response.json())
+                if response.status_code == 200:
 
-            last_sent = current_time
+                    result = response.json()
 
-        except requests.exceptions.RequestException as e:
-            print("Erreur de communication avec l'AI :", e)
+                    print("\n--- Détection YOLO ---")
+                    print(result)
 
+                else:
+
+                    print(
+                        "Erreur API :",
+                        response.status_code
+                    )
+
+            except requests.exceptions.RequestException as e:
+
+                print("Erreur de connexion à YOLO :", e)
+
+    # Quitter avec Q
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-cap.release()
+
+camera.release()
 cv2.destroyAllWindows()

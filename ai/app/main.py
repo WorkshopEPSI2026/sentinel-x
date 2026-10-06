@@ -1,32 +1,67 @@
-from fastapi import FastAPI, UploadFile, File
-import cv2
-import numpy as np
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from ultralytics import YOLO
+from PIL import Image
+import io
 
-app = FastAPI(title="Sentinel-X AI")
+app = FastAPI(
+    title="Sentinel-X AI",
+    description="API de détection d'objets avec YOLO",
+    version="1.0.0"
+)
+
+# Chargement du modèle YOLO
+model = YOLO("yolov8n.pt")
 
 
 @app.get("/")
 def root():
-    return {"status": "AI service is running"}
+    return {
+        "service": "Sentinel-X AI",
+        "status": "running",
+        "model": "YOLOv8n"
+    }
 
 
-@app.post("/process")
-async def process_image(file: UploadFile = File(...)):
-    data = await file.read()
+@app.post("/detect")
+async def detect(file: UploadFile = File(...)):
 
-    image = cv2.imdecode(
-        np.frombuffer(data, np.uint8),
-        cv2.IMREAD_COLOR
-    )
+    # Vérification du type de fichier
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Le fichier doit être une image"
+        )
 
-    if image is None:
-        return {"success": False, "message": "Image invalide"}
+    # Lecture de l'image reçue
+    image_data = await file.read()
 
-    height, width = image.shape[:2]
+    try:
+        image = Image.open(io.BytesIO(image_data))
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Image invalide"
+        )
+
+    # Analyse YOLO
+    results = model(image)
+
+    detections = []
+
+    for result in results:
+
+        for box in result.boxes:
+
+            class_id = int(box.cls[0])
+            confidence = float(box.conf[0])
+
+            detections.append({
+                "object": model.names[class_id],
+                "confidence": round(confidence, 4)
+            })
 
     return {
         "success": True,
-        "message": "Image reçue par sentinel-ai",
-        "width": width,
-        "height": height
+        "filename": file.filename,
+        "detections": detections
     }
