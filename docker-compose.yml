@@ -1,11 +1,14 @@
 services:
+
   backend:
     build: ./backend
     container_name: sentinel-backend
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
     volumes:
       - ./backend:/app
+
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MQTT_BROKER: ${MQTT_BROKER}
@@ -13,104 +16,150 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: ${JWT_ALGORITHM}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+
     ports:
       - "${BACKEND_PORT}:8000"
+
     depends_on:
       postgres:
         condition: service_healthy
       mqtt:
         condition: service_started
+
     networks:
       - sentinel
+
+
+  ai:
+    build: ./ai
+    container_name: sentinel-ai
+    restart: unless-stopped
+
+    ports:
+      - "8001:8001"
+
+    networks:
+      - sentinel
+
 
   frontend:
     build: ./frontend
     container_name: sentinel-frontend
     restart: unless-stopped
     command: npm run dev -- --host 0.0.0.0
+
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
     ports:
       - "${FRONTEND_PORT}:5173"
+
     environment:
       VITE_API_URL: ${VITE_API_URL}
+
     depends_on:
       - backend
+
     networks:
       - sentinel
+
 
   postgres:
     image: postgres:16
     container_name: sentinel-postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
     ports:
       - "${POSTGRES_PORT}:5432"
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
     networks:
       - sentinel
+
 
   adminer:
     image: adminer:latest
     container_name: sentinel-adminer
     restart: unless-stopped
+
     ports:
       - "${ADMINER_PORT}:8080"
+
     depends_on:
       - postgres
+
     networks:
       - sentinel
+
 
   mqtt:
     image: eclipse-mosquitto:2
     container_name: sentinel-mqtt
     restart: unless-stopped
+
     ports:
       - "1883:1883"
+
     volumes:
       - ./infrastructure/mosquitto/config:/mosquitto/config
       - ./infrastructure/mosquitto/data:/mosquitto/data
+
     networks:
       - sentinel
+
 
   prometheus:
     image: prom/prometheus:latest
     container_name: sentinel-prometheus
     restart: unless-stopped
+
     volumes:
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
     ports:
       - "${PROMETHEUS_PORT}:9090"
+
     networks:
       - sentinel
+
 
   grafana:
     image: grafana/grafana:latest
     container_name: sentinel-grafana
     restart: unless-stopped
+
     depends_on:
       - prometheus
+
     volumes:
       - grafana_data:/var/lib/grafana
+
     ports:
       - "${GRAFANA_PORT}:3000"
+
     networks:
       - sentinel
+
 
 volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+
 
 networks:
   sentinel:
