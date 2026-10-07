@@ -1,14 +1,28 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <DHT.h>
 
+// Configuration du capteur DHT (humidité et température)
+const int DHT_PIN = D5;
+#define DHT_TYPE DHT22
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// Configuration du Wi-Fi
 const char *WIFI_SSID = "Jul’s iPhone";
 const char *WIFI_PASSWORD = "00000000";
 
+// Configuration du broker MQTT
 const char *MQTT_BROKER = "172.20.10.4";
 const int MQTT_PORT = 1883;
 
+// Identifiant unique de l'appareil
 const char *DEVICE_ID = "esp8266-01";
+
+const int ledBleu = D0; // Pin de la LED bleue
+const int MQ2_PIN = A0; // Sortie analogique du MQ-2
+const int PIR_PIN = D6; // Pin du capteur PIR
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -24,6 +38,8 @@ void connectWiFi()
     delay(500);
     Serial.print(".");
   }
+
+  digitalWrite(ledBleu, HIGH);
 
   Serial.println();
   Serial.println("Wi-Fi connecte !");
@@ -60,11 +76,21 @@ void connectMQTT()
 
 void publishTelemetry()
 {
-  // Données simulées pour le moment
-  float temperature = 20.6;
-  float humidity = 50.3;
-  int gas = 183;
-  bool presence = true;
+  // Données de température et d'humidité du DHT22
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+  // Lecture réelle du MQ-2
+  int gas = analogRead(MQ2_PIN);
+
+  // Lecture de la présence du capteur PIR
+  bool presence = digitalRead(PIR_PIN);
+
+  if (isnan(temperature) || isnan(humidity))
+  {
+    Serial.println("Erreur lecture DHT22");
+    return;
+  }
 
   char payload[256];
 
@@ -95,7 +121,10 @@ void setup()
 {
   Serial.begin(115200);
 
-  pinMode(D0, OUTPUT);
+  dht.begin();
+
+  pinMode(ledBleu, OUTPUT);
+  pinMode(PIR_PIN, INPUT);
 
   Serial.println();
   Serial.println("================================");
@@ -111,12 +140,6 @@ void setup()
 
 void loop()
 {
-  digitalWrite(D0, HIGH);  // LED allumée
-  delay(500);
-  digitalWrite(D0, LOW);   // LED éteinte
-  delay(500);
-
-  
   if (!mqttClient.connected())
   {
     connectMQTT();
@@ -126,7 +149,7 @@ void loop()
 
   static unsigned long lastMessage = 0;
 
-  if (millis() - lastMessage >= 50000)
+  if (millis() - lastMessage >= 5000)
   {
     lastMessage = millis();
 
