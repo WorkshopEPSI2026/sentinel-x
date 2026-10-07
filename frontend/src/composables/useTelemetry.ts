@@ -22,6 +22,8 @@ export function useTelemetry() {
   const error = ref<string | null>(null);
 
   let socket: WebSocket | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
 
   /*
    * Chargement de l'historique depuis l'API REST
@@ -37,7 +39,7 @@ export function useTelemetry() {
       telemetryHistory.value = response.data.reverse();
 
       if (telemetryHistory.value.length > 0) {
-        telemetry.value = telemetryHistory.value[telemetryHistory.value.length - 1];
+        telemetry.value = telemetryHistory.value[telemetryHistory.value.length - 1] ?? null;
       }
     } catch (err) {
       console.error("Erreur chargement historique :", err);
@@ -86,11 +88,22 @@ export function useTelemetry() {
     socket.onclose = () => {
       connected.value = false;
 
-      console.log("WebSocket fermé");
+      console.log("WebSocket fermé, nouvelle tentative dans 3 s");
+
+      // Reconnexion automatique : le dashboard ne reste plus figé
+      // si le backend redémarre.
+      if (!stopped) {
+        retryTimer = setTimeout(async () => {
+          await loadHistory();
+          connect();
+        }, 3000);
+      }
     };
   };
 
   const disconnect = () => {
+    stopped = true;
+    if (retryTimer) clearTimeout(retryTimer);
     socket?.close();
     socket = null;
   };

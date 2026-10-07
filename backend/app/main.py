@@ -4,6 +4,7 @@ import asyncio
 
 from app.services import websocket as websocket_service
 
+from app.routers.alerts import router as alerts_router
 from app.routers.auth import router as auth_router
 from app.routers.telemetry import router as telemetry_router
 from app.routers.websocket import router as websocket_router
@@ -26,6 +27,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(telemetry_router)
+app.include_router(alerts_router)
 app.include_router(websocket_router)
 
 @app.on_event("startup")

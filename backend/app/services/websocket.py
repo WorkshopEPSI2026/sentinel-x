@@ -28,7 +28,8 @@ class ConnectionManager:
             self.disconnect(connection)
 
 
-manager = ConnectionManager()
+manager = ConnectionManager()          # télémétrie  (/ws/telemetry)
+alerts_manager = ConnectionManager()   # alertes     (/ws/alerts)
 
 # Boucle asyncio utilisée par FastAPI
 event_loop: asyncio.AbstractEventLoop | None = None
