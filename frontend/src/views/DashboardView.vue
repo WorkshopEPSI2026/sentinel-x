@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { useTelemetry } from "../composables/useTelemetry";
 import TelemetryChart from "../components/telemetry/TelemetryChart.vue";
+import { useAlerts } from "../composables/useAlerts";
+import AlertList from "../components/alerts/AlertList.vue";
 
 const { telemetry, telemetryHistory, connected, error } = useTelemetry();
+const { alerts, activeAlerts } = useAlerts();
 </script>
 
 <template>
@@ -44,9 +47,10 @@ const { telemetry, telemetryHistory, connected, error } = useTelemetry();
           >
             Alertes
             <span
+              v-if="activeAlerts.length > 0"
               class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600"
             >
-              3
+              {{ activeAlerts.length }}
             </span>
           </RouterLink>
 
@@ -79,6 +83,21 @@ const { telemetry, telemetryHistory, connected, error } = useTelemetry();
       <p v-if="error" class="text-red-500">
         {{ error }}
       </p>
+
+      <!-- Bandeau des alertes en cours -->
+      <div
+        v-if="activeAlerts.length > 0"
+        class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4"
+      >
+        <p class="font-semibold text-red-700">
+          {{ activeAlerts.length }} alerte(s) en cours
+        </p>
+        <p class="text-sm text-red-600">
+          <span v-for="(a, i) in activeAlerts" :key="a.id">
+            {{ a.type }} ({{ a.device_id }})<span v-if="i < activeAlerts.length - 1"> · </span>
+          </span>
+        </p>
+      </div>
 
       <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- États actuels du site (température, humidité, etc.) -->
@@ -119,6 +138,12 @@ const { telemetry, telemetryHistory, connected, error } = useTelemetry();
           <img src="" alt="Caméra" class="mt-2" />
         </div>
 
+      </div>
+
+      <!-- Journal des alertes (ESP + IA) -->
+      <div class="mt-6 p-4 rounded-lg bg-white shadow">
+        <h2 class="font-semibold mb-4">Alertes</h2>
+        <AlertList :alerts="alerts" />
       </div>
 
       <p class="mt-6 text-sm text-gray-500">

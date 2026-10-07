@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -21,6 +21,10 @@ def get_latest_telemetry(
         .order_by(Telemetry.created_at.desc())
         .first()
     )
+
+    if telemetry is None:
+        # Base vide : 404 explicite au lieu d'une erreur 500
+        raise HTTPException(status_code=404, detail="Aucune mesure pour le moment")
 
     return telemetry
 
