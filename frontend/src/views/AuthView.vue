@@ -51,9 +51,7 @@ async function handleSubmit() {
     username.value = "";
     password.value = "";
   } catch (err: any) {
-    error.value =
-      err.response?.data?.detail ??
-      "Une erreur est survenue.";
+    error.value = err.response?.data?.detail ?? "Une erreur est survenue.";
   } finally {
     loading.value = false;
   }
@@ -65,19 +63,39 @@ function toggleMode() {
   error.value = "";
   success.value = "";
 }
-
 </script>
 
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-    <div
-      class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl"
-    >
+  <main class="flex min-h-screen items-center justify-center bg-gray-100 px-4">
+    <div class="relative w-full max-w-md rounded-xl bg-white p-8 shadow">
       <!-- Header -->
-      <div class="mb-8 text-center">
-        <h1 class="text-3xl font-bold text-white">Sentinel-X</h1>
+      <div class="mb-8">
+        <h1 class="text-2xl font-bold text-gray-900">Sentinel-X</h1>
 
-        <p class="mt-2 text-sm text-slate-400">
+        <!-- bouton de fermeture -->
+        <!-- Retour à l'accueil -->
+        <RouterLink
+          to="/"
+          aria-label="Retour à l'accueil"
+          title="Retour à l'accueil"
+          class="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </RouterLink>
+
+        <p class="mt-1 text-sm text-gray-500">
           {{ isLogin ? "Connexion à votre compte" : "Créer un compte" }}
         </p>
       </div>
@@ -85,7 +103,7 @@ function toggleMode() {
       <!-- Error -->
       <div
         v-if="error"
-        class="mb-5 rounded-lg border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-400"
+        class="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600"
       >
         {{ error }}
       </div>
@@ -93,7 +111,7 @@ function toggleMode() {
       <!-- Success -->
       <div
         v-if="success"
-        class="mb-5 rounded-lg border border-green-900 bg-green-950/50 px-4 py-3 text-sm text-green-400"
+        class="mb-5 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-600"
       >
         {{ success }}
       </div>
@@ -103,7 +121,7 @@ function toggleMode() {
         <div v-if="!isLogin">
           <label
             for="username"
-            class="mb-2 block text-sm font-medium text-slate-300"
+            class="mb-2 block text-sm font-medium text-gray-700"
           >
             Nom d'utilisateur
           </label>
@@ -114,8 +132,8 @@ function toggleMode() {
             type="text"
             required
             autocomplete="username"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
             placeholder="john"
+            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
           />
         </div>
 
@@ -123,7 +141,7 @@ function toggleMode() {
         <div>
           <label
             for="email"
-            class="mb-2 block text-sm font-medium text-slate-300"
+            class="mb-2 block text-sm font-medium text-gray-700"
           >
             Email
           </label>
@@ -134,8 +152,8 @@ function toggleMode() {
             type="email"
             required
             autocomplete="email"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
             placeholder="john@example.com"
+            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
           />
         </div>
 
@@ -143,7 +161,7 @@ function toggleMode() {
         <div>
           <label
             for="password"
-            class="mb-2 block text-sm font-medium text-slate-300"
+            class="mb-2 block text-sm font-medium text-gray-700"
           >
             Mot de passe
           </label>
@@ -154,8 +172,8 @@ function toggleMode() {
             type="password"
             required
             :autocomplete="isLogin ? 'current-password' : 'new-password'"
-            class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none transition focus:border-blue-500"
             placeholder="••••••••"
+            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
           />
         </div>
 
@@ -163,7 +181,7 @@ function toggleMode() {
         <button
           type="submit"
           :disabled="loading"
-          class="w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          class="w-full rounded-lg bg-gray-900 px-4 py-3 font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{
             loading
@@ -176,7 +194,7 @@ function toggleMode() {
       </form>
 
       <!-- Toggle -->
-      <div class="mt-6 text-center text-sm text-slate-400">
+      <div class="mt-6 text-center text-sm text-gray-500">
         <span>
           {{
             isLogin
@@ -187,7 +205,7 @@ function toggleMode() {
 
         <button
           type="button"
-          class="ml-1 font-medium text-blue-500 hover:text-blue-400"
+          class="ml-1 font-medium text-gray-900 hover:underline"
           @click="toggleMode"
         >
           {{ isLogin ? "Créer un compte" : "Se connecter" }}

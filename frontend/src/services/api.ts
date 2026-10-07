@@ -8,7 +8,7 @@ import {
   getRefreshToken,
   setTokens,
   clearTokens,
-} from "../services/tokens";
+} from "./tokens";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
