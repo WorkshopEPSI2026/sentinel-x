@@ -126,7 +126,7 @@
             class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4"
           >
             <!-- IoT -->
-            <div class="rounded-xl border border-gray-200 p-6">
+            <div class="rounded-xl border border-gray-200 p-6 hover:shadow-lg transition">
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 font-bold"
               >
@@ -144,7 +144,7 @@
             </div>
 
             <!-- Temps réel -->
-            <div class="rounded-xl border border-gray-200 p-6">
+            <div class="rounded-xl border border-gray-200 p-6 hover:shadow-lg transition">
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 font-bold"
               >
@@ -162,7 +162,7 @@
             </div>
 
             <!-- IA -->
-            <div class="rounded-xl border border-gray-200 p-6">
+            <div class="rounded-xl border border-gray-200 p-6 hover:shadow-lg transition">
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 font-bold"
               >
@@ -180,7 +180,7 @@
             </div>
 
             <!-- Sécurité -->
-            <div class="rounded-xl border border-gray-200 p-6">
+            <div class="rounded-xl border border-gray-200 p-6 hover:shadow-lg transition">
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 font-bold"
               >

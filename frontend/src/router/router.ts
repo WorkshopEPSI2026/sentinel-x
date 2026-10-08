@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import AcceuilView from "../views/AcceuilView.vue";
 import AuthView from "../views/AuthView.vue";
 import DashboardView from "../views/DashboardView.vue";
+import ProfileView from "../views/ProfileView.vue";
 
 import { useAuth } from "../composables/useAuth";
 
@@ -15,6 +16,7 @@ const router = createRouter({
       name: "Acceuil",
       component: AcceuilView,
     },
+
     {
       path: "/auth",
       name: "auth",
@@ -23,6 +25,7 @@ const router = createRouter({
         guestOnly: true,
       },
     },
+
     {
       path: "/dashboard",
       name: "dashboard",
@@ -31,12 +34,28 @@ const router = createRouter({
         requiresAuth: true,
       },
     },
+
+    {
+      path: "/profile",
+      name: "profile",
+      component: ProfileView,
+      meta: {
+        requiresAuth: true,
+      },
+    },
   ],
 });
 
 router.beforeEach(async (to) => {
-  const { isAuthenticated, fetchUser } = useAuth();
+  const {
+    isAuthenticated,
+    user,
+    fetchUser,
+  } = useAuth();
 
+  /*
+   * Route protégée
+   */
   if (to.meta.requiresAuth) {
     if (!isAuthenticated.value) {
       return {
@@ -44,10 +63,14 @@ router.beforeEach(async (to) => {
       };
     }
 
-    if (!useAuth().user.value) {
-      const user = await fetchUser();
+    /*
+     * Le token existe mais l'utilisateur
+     * n'est pas encore chargé.
+     */
+    if (!user.value) {
+      const currentUser = await fetchUser();
 
-      if (!user) {
+      if (!currentUser) {
         return {
           name: "auth",
         };
@@ -55,6 +78,9 @@ router.beforeEach(async (to) => {
     }
   }
 
+  /*
+   * Route réservée aux utilisateurs non connectés
+   */
   if (to.meta.guestOnly && isAuthenticated.value) {
     return {
       name: "dashboard",

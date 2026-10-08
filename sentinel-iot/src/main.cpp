@@ -185,8 +185,8 @@ void applyOutputs()
     digitalWrite(
         PIN_LED_BLUE,
         (cmdLed || presence)
-            ? LED_BLUE_ON
-            : LED_BLUE_OFF
+            ? LED_BLUE_OFF
+            : LED_BLUE_ON
     );
 
     // ------------------------------------------------------------------------

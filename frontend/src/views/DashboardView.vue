@@ -1,51 +1,79 @@
 <script setup lang="ts">
+import { useRouter } from "vue-router";
+
 import { useTelemetry } from "../composables/useTelemetry";
-import TelemetryChart from "../components/telemetry/TelemetryChart.vue";
 import { useAlerts } from "../composables/useAlerts";
+import { useAuth } from "../composables/useAuth";
+
+import SystemStatus from "../components/dashboard/SystemStatus.vue";
+import CameraCard from "../components/dashboard/CameraCard.vue";
+import SensorOverview from "../components/dashboard/SensorOverview.vue";
+import ActiveAlerts from "../components/dashboard/ActiveAlerts.vue";
+
+import TelemetryChart from "../components/telemetry/TelemetryChart.vue";
 import AlertList from "../components/alerts/AlertList.vue";
 
+import { useCamera } from "../composables/useCamera";
+
+const router = useRouter();
+const { status: cameraStatus, connected: cameraConnected } = useCamera();
+
 const { telemetry, telemetryHistory, connected, error } = useTelemetry();
+
 const { alerts, activeAlerts } = useAlerts();
+
+const { user, logout } = useAuth();
+
+async function handleLogout() {
+  await logout();
+
+  await router.push({
+    name: "auth",
+  });
+}
 </script>
 
 <template>
-  <main class="p-6">
+  <main class="min-h-screen bg-gray-100 text-gray-900 pt-16">
+    <!-- ====================================================== -->
+    <!-- NAVBAR                                                  -->
+    <!-- ====================================================== -->
+
     <nav
-      class="border-b border-gray-200 bg-white fixed top-0 left-0 right-0 z-50 shadow"
+      class="fixed left-0 right-0 top-0 z-50 border-b border-gray-200 bg-white"
     >
-      <div
-        class="mx-auto flex h-16 max-w-7xl items-center justify-between px-6"
-      >
+      <div class="mx-auto flex h-16 items-center justify-between px-6 md:px-15">
         <!-- Logo -->
-        <RouterLink to="/dashboard" class="text-xl font-bold text-gray-900">
+        <RouterLink to="/dashboard" class="text-xl font-bold tracking-tight">
           Sentinel-X
         </RouterLink>
 
         <!-- Navigation -->
-        <div class="flex items-center gap-8">
+        <div class="hidden items-center gap-8 md:flex">
           <RouterLink to="/dashboard" class="text-sm font-medium text-gray-900">
             Dashboard
           </RouterLink>
 
           <RouterLink
             to="/surveillance"
-            class="text-sm text-gray-600 hover:text-gray-900"
+            class="text-sm text-gray-600 transition hover:text-gray-900"
           >
             Surveillance
           </RouterLink>
 
           <RouterLink
             to="/sensors"
-            class="text-sm text-gray-600 hover:text-gray-900"
+            class="text-sm text-gray-600 transition hover:text-gray-900"
           >
             Capteurs
           </RouterLink>
 
           <RouterLink
             to="/alerts"
-            class="text-sm text-gray-600 hover:text-gray-900"
+            class="flex items-center gap-2 text-sm text-gray-600 transition hover:text-gray-900"
           >
             Alertes
+
             <span
               v-if="activeAlerts.length > 0"
               class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-600"
@@ -56,134 +84,179 @@ const { alerts, activeAlerts } = useAlerts();
 
           <RouterLink
             to="/history"
-            class="text-sm text-gray-600 hover:text-gray-900"
+            class="text-sm text-gray-600 transition hover:text-gray-900"
           >
             Historique
           </RouterLink>
         </div>
 
         <!-- User -->
-        <button
-          class="rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
-        >
-          Jules
-        </button>
+        <div class="flex items-center gap-2">
+          <RouterLink
+            to="/profile"
+            class="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+          >
+            {{ user?.username ?? "Utilisateur" }}
+          </RouterLink>
+
+          <button
+            type="button"
+            class="hidden rounded-lg px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 sm:block"
+            @click="handleLogout"
+          >
+            Déconnexion
+          </button>
+        </div>
       </div>
     </nav>
 
-    <div class="px-2 md:px-6 lg-8 py-8">
-      <p class="mt-2">
-        WebSocket :
+    <!-- ====================================================== -->
+    <!-- CONTENT                                                 -->
+    <!-- ====================================================== -->
 
-        <span :class="connected ? 'text-green-500' : 'text-red-500'">
-          {{ connected ? "Connecté" : "Déconnecté" }}
-        </span>
-      </p>
-
-      <p v-if="error" class="text-red-500">
-        {{ error }}
-      </p>
-
-      <!-- Bandeau des alertes en cours -->
+    <div class="mx-auto px-6 md:px-15 py-5">
+      <!-- Header -->
       <div
-        v-if="activeAlerts.length > 0"
-        class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4"
+        class="mb-10 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"
       >
-        <p class="font-semibold text-red-700">
-          {{ activeAlerts.length }} alerte(s) en cours
-        </p>
-        <p class="text-sm text-red-600">
-          <span v-for="(a, i) in activeAlerts" :key="a.id">
-            {{ a.type }} ({{ a.device_id }})<span v-if="i < activeAlerts.length - 1"> · </span>
+        <div>
+          <span
+            class="inline-flex rounded-full bg-gray-200 px-3 py-1 text-sm font-medium text-gray-700"
+          >
+            Edge Security & IoT
           </span>
-        </p>
+
+          <h1 class="mt-5 text-4xl font-bold tracking-tight text-gray-900">
+            Centre de supervision
+          </h1>
+
+          <p class="mt-3 max-w-2xl text-gray-600">
+            Surveillez en temps réel l'état de votre infrastructure Sentinel-X.
+          </p>
+        </div>
+
+        <SystemStatus :connected="connected" />
       </div>
 
-      <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- États actuels du site (température, humidité, etc.) -->
-        <div v-if="telemetry" class="grid grid-cols-2 gap-4">
-          <div class="p-4 rounded-lg bg-gray-100">
-            <p class="text-sm text-gray-500">Température</p>
-
-            <p class="text-2xl font-bold">{{ telemetry.temperature }} °C</p>
-          </div>
-
-          <div class="p-4 rounded-lg bg-gray-100">
-            <p class="text-sm text-gray-500">Humidité</p>
-
-            <p class="text-2xl font-bold">{{ telemetry.humidity }} %</p>
-          </div>
-
-          <div class="p-4 rounded-lg bg-gray-100">
-            <p class="text-sm text-gray-500">Gaz</p>
-
-            <p class="text-2xl font-bold">
-              {{ telemetry.gas }}
-            </p>
-          </div>
-          
-
-          <div class="p-4 rounded-lg bg-gray-100">
-            <p class="text-sm text-gray-500">Présence</p>
-
-            <p class="text-2xl font-bold">
-              {{ telemetry.presence ? "Détectée" : "Aucune" }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Caméra -->
-        <div class="p-4 rounded-lg bg-gray-100 w-full h-100">
-          <p class="text-sm text-gray-500">Caméra</p>
-          <img src="" alt="Caméra" class="mt-2" />
-        </div>
-
+      <!-- Erreur -->
+      <div
+        v-if="error"
+        class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+      >
+        {{ error }}
       </div>
 
-      <!-- Journal des alertes (ESP + IA) -->
-      <div class="mt-6 p-4 rounded-lg bg-white shadow">
-        <h2 class="font-semibold mb-4">Alertes</h2>
-        <AlertList :alerts="alerts" />
-      </div>
+      <!-- ==================================================== -->
+      <!-- SURVEILLANCE PRINCIPALE                              -->
+      <!-- ==================================================== -->
 
-      <p class="mt-6 text-sm text-gray-500">
-        {{ telemetryHistory.length }} mesures chargées
-      </p>
+      <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <CameraCard />
+        
+        <SensorOverview
+          :telemetry="telemetry"
+          :connected="connected"
+          :camera-status="cameraStatus"
+          :camera-connected="cameraConnected"
+        />
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-        <div class="p-4 rounded-lg bg-white shadow">
-          <h2 class="font-semibold mb-4">Température</h2>
+      </section>
 
-          <TelemetryChart
-            :telemetry-history="telemetryHistory"
-            label="Température"
-            data-key="temperature"
-            unit="°C"
-          />
+      <!-- ==================================================== -->
+      <!-- ALERTES                                               -->
+      <!-- ==================================================== -->
+
+      <section class="mt-8">
+        <ActiveAlerts :alerts="alerts" :active-alerts="activeAlerts" />
+      </section>
+
+      <!-- ==================================================== -->
+      <!-- GRAPHIQUES                                            -->
+      <!-- ==================================================== -->
+
+      <section class="mt-10">
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold tracking-tight text-gray-900">
+            Télémétrie
+          </h2>
+
+          <p class="mt-2 text-gray-600">
+            Évolution des données environnementales collectées par l'ESP8266.
+          </p>
         </div>
 
-        <div class="p-4 rounded-lg bg-white shadow">
-          <h2 class="font-semibold mb-4">Humidité</h2>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <!-- Température -->
+          <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 class="mb-5 font-semibold text-gray-900">Température</h3>
 
-          <TelemetryChart
-            :telemetry-history="telemetryHistory"
-            label="Humidité"
-            data-key="humidity"
-            unit="%"
-          />
+            <TelemetryChart
+              :telemetry-history="telemetryHistory"
+              label="Température"
+              data-key="temperature"
+              unit="°C"
+            />
+          </div>
+
+          <!-- Humidité -->
+          <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h3 class="mb-5 font-semibold text-gray-900">Humidité</h3>
+
+            <TelemetryChart
+              :telemetry-history="telemetryHistory"
+              label="Humidité"
+              data-key="humidity"
+              unit="%"
+            />
+          </div>
+
+          <!-- Gaz -->
+          <div
+            class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:col-span-2"
+          >
+            <h3 class="mb-5 font-semibold text-gray-900">Gaz</h3>
+
+            <TelemetryChart
+              :telemetry-history="telemetryHistory"
+              label="Gaz"
+              data-key="gas"
+              unit="ppm"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================== -->
+      <!-- HISTORIQUE DES ALERTES                                -->
+      <!-- ==================================================== -->
+
+      <section class="mt-10">
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold tracking-tight text-gray-900">
+            Historique des alertes
+          </h2>
+
+          <p class="mt-2 text-gray-600">
+            Événements détectés par le système de supervision.
+          </p>
         </div>
 
-        <div class="p-4 rounded-lg bg-white shadow lg:col-span-2">
-          <h2 class="font-semibold mb-4">Gaz</h2>
-
-          <TelemetryChart
-            :telemetry-history="telemetryHistory"
-            label="Gaz"
-            data-key="gas"
-            unit="ppm"
-          />
+        <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <AlertList :alerts="alerts" />
         </div>
-      </div>
+      </section>
+
+      <!-- ==================================================== -->
+      <!-- FOOTER                                                -->
+      <!-- ==================================================== -->
+
+      <footer
+        class="mt-12 flex flex-col gap-2 border-t border-gray-200 py-6 text-sm text-gray-500 md:flex-row md:items-center md:justify-between"
+      >
+        <p>© 2026 Sentinel-X</p>
+
+        <p>Edge Security & IoT</p>
+      </footer>
     </div>
   </main>
 </template>

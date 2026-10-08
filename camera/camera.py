@@ -1,338 +1,428 @@
 import cv2
 import requests
 import time
+import threading
+
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
 
-# ==========================================
+# ============================================================================
 # CONFIGURATION
-# ==========================================
+# ============================================================================
+
+CAMERA_INDEX = 0
 
 AI_URL = "http://127.0.0.1:8001/detect"
 
+# Intervalle entre deux analyses IA
 ANALYSIS_INTERVAL = 1.0
 
-# Nombre de personnes détectées lors de l'analyse précédente
-last_person_count = 0
+JPEG_QUALITY = 80
 
 
-# ==========================================
-# OUVERTURE DE LA WEBCAM
-# ==========================================
+# ============================================================================
+# APPLICATION
+# ============================================================================
 
-camera = cv2.VideoCapture(1)
+app = FastAPI(
+    title="Sentinel-X Camera",
+    description="Flux vidéo et surveillance Sentinel-X",
+    version="1.0.0",
+)
 
+
+# ============================================================================
+# WEBCAM
+# ============================================================================
+
+camera = cv2.VideoCapture(CAMERA_INDEX)
 
 if not camera.isOpened():
-
-    print("Erreur : impossible d'ouvrir la webcam.")
-
-    exit()
-
-
-print("======================================")
-print("        SENTINEL-X SECURITY")
-print("======================================")
-print("Webcam démarrée.")
-print("Mode : détection humaine")
-print("Analyse : 1 image / seconde")
-print("Appuie sur Q pour arrêter.")
-print("======================================")
+    raise RuntimeError(
+        "Impossible d'ouvrir la webcam."
+    )
 
 
-last_send = 0
+# ============================================================================
+# ÉTAT DE L'IA
+# ============================================================================
 
-
-# Dernières personnes détectées
 detections = []
+person_detected = False
+persons_count = 0
+ai_available = False
+
+lock = threading.Lock()
 
 
-# ==========================================
-# BOUCLE PRINCIPALE
-# ==========================================
+# ============================================================================
+# IMAGE POUR L'IA
+# ============================================================================
 
-while True:
-
-
-    # Lire une image
-    ret, frame = camera.read()
+latest_frame = None
+frame_lock = threading.Lock()
 
 
-    if not ret:
+# ============================================================================
+# ANALYSE IA
+# ============================================================================
 
-        print(
-            "Erreur : impossible de récupérer l'image."
-        )
+def ai_worker():
 
-        break
+    global detections
+    global person_detected
+    global persons_count
+    global ai_available
 
+    while True:
 
-    # ==========================================
-    # ANALYSE TOUTES LES 1 SECONDES
-    # ==========================================
+        # ------------------------------------------------------------
+        # Récupérer la dernière image disponible
+        # ------------------------------------------------------------
 
-    current_time = time.time()
+        with frame_lock:
 
+            if latest_frame is None:
+                frame = None
+            else:
+                frame = latest_frame.copy()
 
-    if current_time - last_send >= ANALYSIS_INTERVAL:
+        if frame is None:
 
-        last_send = current_time
+            time.sleep(0.1)
+            continue
 
+        # ------------------------------------------------------------
+        # Encoder l'image
+        # ------------------------------------------------------------
 
-        # Convertir l'image en JPEG
         success, buffer = cv2.imencode(
             ".jpg",
-            frame
+            frame,
         )
 
+        if not success:
 
-        if success:
+            time.sleep(ANALYSIS_INTERVAL)
+            continue
 
-            files = {
+        files = {
+            "file": (
+                "camera.jpg",
+                buffer.tobytes(),
+                "image/jpeg",
+            )
+        }
 
-                "file": (
+        # ------------------------------------------------------------
+        # Appel YOLO
+        # ------------------------------------------------------------
 
-                    "camera.jpg",
+        try:
 
-                    buffer.tobytes(),
+            response = requests.post(
+                AI_URL,
+                files=files,
+                timeout=2,
+            )
 
-                    "image/jpeg"
+            if response.status_code != 200:
 
+                print(
+                    f"[AI] Erreur HTTP : "
+                    f"{response.status_code}"
                 )
 
-            }
+                with lock:
+                    ai_available = False
 
+            else:
 
-            try:
+                result = response.json()
 
-                # Envoyer à l'IA
-                response = requests.post(
-
-                    AI_URL,
-
-                    files=files,
-
-                    timeout=10
-
-                )
-
-
-                # ==========================================
-                # REPONSE DE L'IA
-                # ==========================================
-
-                if response.status_code == 200:
-
-
-                    result = response.json()
-
+                with lock:
 
                     detections = result.get(
                         "detections",
                         []
                     )
 
-
                     person_detected = result.get(
                         "person_detected",
                         False
                     )
-
 
                     persons_count = result.get(
                         "persons_count",
                         0
                     )
 
+                    ai_available = True
 
-                    # ==========================================
-                    # PERSONNE DETECTEE
-                    # ==========================================
+                # ----------------------------------------------------
+                # Logs
+                # ----------------------------------------------------
 
-                    if person_detected:
+                if person_detected:
 
-
-                        print()
-                        print("🚨 ===============================")
-                        print("🚨 ALERTE SENTINEL-X")
-                        print("🚨 PERSONNE DETECTEE")
-                        print(
-                            f"🚨 Nombre de personnes : {persons_count}"
-                        )
-                        print("🚨 ===============================")
-
-
-                    else:
-
-                        print(
-                            "[SECURITE] "
-                            "Aucune personne détectée."
-                        )
-
-
-                    # mémoriser le nombre de personnes
-                    last_person_count = persons_count
-
+                    print(
+                        f"[SECURITE] "
+                        f"{persons_count} personne(s) "
+                        f"détectée(s)"
+                    )
 
                 else:
 
                     print(
-                        "Erreur API :",
-                        response.status_code
+                        "[SECURITE] "
+                        "Aucune personne détectée."
                     )
 
+        except requests.exceptions.RequestException as exc:
 
-            except requests.exceptions.RequestException as e:
+            print(
+                f"[AI] Erreur de connexion : {exc}"
+            )
 
-                print(
-                    "Erreur de connexion à YOLO :",
-                    e
-                )
+            with lock:
+                ai_available = False
+
+        # ------------------------------------------------------------
+        # Attendre avant la prochaine analyse
+        # ------------------------------------------------------------
+
+        time.sleep(ANALYSIS_INTERVAL)
 
 
-    # ==========================================
-    # AFFICHAGE DES PERSONNES
-    # ==========================================
+# ============================================================================
+# ANNOTATION DE L'IMAGE
+# ============================================================================
 
-    for detection in detections:
+def annotate_frame(frame):
 
+    with lock:
+
+        current_detections = list(
+            detections
+        )
+
+        current_person_detected = (
+            person_detected
+        )
+
+        current_persons_count = (
+            persons_count
+        )
+
+        current_ai_available = (
+            ai_available
+        )
+
+    # ----------------------------------------------------------------
+    # IA indisponible
+    # ----------------------------------------------------------------
+
+    if not current_ai_available:
+
+        cv2.putText(
+            frame,
+            "IA INDISPONIBLE",
+            (20, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 165, 255),
+            2,
+        )
+
+        return frame
+
+    # ----------------------------------------------------------------
+    # Bounding boxes
+    # ----------------------------------------------------------------
+
+    for detection in current_detections:
 
         confidence = detection["confidence"]
 
         box = detection["box"]
 
-
         x1 = box["x1"]
         y1 = box["y1"]
-
         x2 = box["x2"]
         y2 = box["y2"]
 
-
-        # Rectangle autour de la personne
         cv2.rectangle(
-
             frame,
-
             (x1, y1),
-
             (x2, y2),
-
             (0, 0, 255),
-
-            2
-
+            2,
         )
 
-
-        # Texte
         label = (
             f"PERSONNE "
             f"{confidence:.0%}"
         )
 
-
         cv2.putText(
-
             frame,
-
             label,
-
             (x1, max(y1 - 10, 20)),
-
             cv2.FONT_HERSHEY_SIMPLEX,
-
             0.7,
-
             (0, 0, 255),
-
-            2
-
+            2,
         )
 
+    # ----------------------------------------------------------------
+    # Statut
+    # ----------------------------------------------------------------
 
-    # ==========================================
-    # INFORMATIONS SUR L'ECRAN
-    # ==========================================
-
-    if len(detections) > 0:
-
+    if current_person_detected:
 
         status = (
             f"ALERTE : "
-            f"{len(detections)} personne(s)"
+            f"{current_persons_count} personne(s)"
         )
 
-
-        cv2.putText(
-
-            frame,
-
-            status,
-
-            (20, 40),
-
-            cv2.FONT_HERSHEY_SIMPLEX,
-
-            0.8,
-
-            (0, 0, 255),
-
-            2
-
-        )
-
+        color = (0, 0, 255)
 
     else:
 
+        status = "ZONE SECURISEE"
 
-        cv2.putText(
+        color = (0, 255, 0)
 
-            frame,
+    cv2.putText(
+        frame,
+        status,
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        color,
+        2,
+    )
 
-            "ZONE SECURISEE",
+    return frame
 
-            (20, 40),
 
-            cv2.FONT_HERSHEY_SIMPLEX,
+# ============================================================================
+# GÉNÉRATEUR DU FLUX VIDÉO
+# ============================================================================
 
-            0.8,
+def generate_frames():
 
-            (0, 255, 0),
+    while True:
 
-            2
+        # ------------------------------------------------------------
+        # Capture webcam
+        # ------------------------------------------------------------
 
+        success, frame = camera.read()
+
+        if not success:
+
+            print(
+                "[CAMERA] Impossible de récupérer l'image."
+            )
+
+            break
+
+        # ------------------------------------------------------------
+        # Donner l'image au thread IA
+        # ------------------------------------------------------------
+
+        with frame_lock:
+
+            global latest_frame
+            latest_frame = frame.copy()
+
+        # ------------------------------------------------------------
+        # Annoter avec le dernier résultat IA disponible
+        # ------------------------------------------------------------
+
+        display_frame = annotate_frame(
+            frame
+        )
+
+        # ------------------------------------------------------------
+        # Encodage JPEG
+        # ------------------------------------------------------------
+
+        success, buffer = cv2.imencode(
+            ".jpg",
+            display_frame,
+            [
+                cv2.IMWRITE_JPEG_QUALITY,
+                JPEG_QUALITY,
+            ],
+        )
+
+        if not success:
+            continue
+
+        frame_bytes = buffer.tobytes()
+
+        # ------------------------------------------------------------
+        # MJPEG
+        # ------------------------------------------------------------
+
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n"
+            + frame_bytes
+            + b"\r\n"
         )
 
 
-    # ==========================================
-    # AFFICHER LA WEBCAM
-    # ==========================================
+# ============================================================================
+# ROUTES
+# ============================================================================
 
-    cv2.imshow(
+@app.get("/")
+def root():
 
-        "Sentinel-X - Surveillance",
+    return {
+        "service": "sentinel-camera",
+        "status": "running",
+        "camera": True,
+        "ai": AI_URL,
+    }
 
-        frame
 
+@app.get("/video_feed")
+def video_feed():
+
+    return StreamingResponse(
+        generate_frames(),
+        media_type=(
+            "multipart/x-mixed-replace; "
+            "boundary=frame"
+        ),
     )
 
 
-    # ==========================================
-    # QUITTER AVEC Q
-    # ==========================================
+@app.get("/status")
+def status():
 
-    if cv2.waitKey(1) & 0xFF == ord("q"):
+    with lock:
 
-        break
+        return {
+            "ai_available": ai_available,
+            "person_detected": person_detected,
+            "persons_count": persons_count,
+            "detections": detections,
+        }
 
 
-# ==========================================
-# FERMETURE
-# ==========================================
+# ============================================================================
+# THREAD IA
+# ============================================================================
 
-camera.release()
+ai_thread = threading.Thread(
+    target=ai_worker,
+    daemon=True,
+)
 
-cv2.destroyAllWindows()
-
-print()
-print("Sentinel-X Security arrêté.")
+ai_thread.start()

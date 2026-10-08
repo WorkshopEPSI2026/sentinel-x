@@ -43,27 +43,27 @@ services:
 
 
   # Détection d'anomalies (Isolation Forest) : voir ai/anomaly/README.md
-  anomaly:
-    build: ./ai/anomaly
-    container_name: sentinel-anomaly
-    restart: unless-stopped
+  # anomaly:
+  #   build: ./ai/anomaly
+  #   container_name: sentinel-anomaly
+  #   restart: unless-stopped
 
-    environment:
-      MQTT_HOST: mqtt
-      MQTT_PORT: 1883
-      TOPIC_TELEMETRY: sentinel/esp8266/telemetry
-      TOPIC_ALERTS: sentinel/esp8266/alerts
-      CONSECUTIVE: 3
+  #   environment:
+  #     MQTT_HOST: mqtt
+  #     MQTT_PORT: 1883
+  #     TOPIC_TELEMETRY: sentinel/esp8266/telemetry
+  #     TOPIC_ALERTS: sentinel/esp8266/alerts
+  #     CONSECUTIVE: 3
 
-    volumes:
-      - ./ai/anomaly/data:/app/data
-      - ./ai/anomaly/models:/app/models
+  #   volumes:
+  #     - ./ai/anomaly/data:/app/data
+  #     - ./ai/anomaly/models:/app/models
 
-    depends_on:
-      - mqtt
+  #   depends_on:
+  #     - mqtt
 
-    networks:
-      - sentinel
+  #   networks:
+  #     - sentinel
 
 
   frontend:
@@ -146,37 +146,37 @@ services:
       - sentinel
 
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: sentinel-prometheus
-    restart: unless-stopped
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: sentinel-prometheus
+  #   restart: unless-stopped
 
-    volumes:
-      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   volumes:
+  #     - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
-    ports:
-      - "${PROMETHEUS_PORT}:9090"
+  #   ports:
+  #     - "${PROMETHEUS_PORT}:9090"
 
-    networks:
-      - sentinel
+  #   networks:
+  #     - sentinel
 
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: sentinel-grafana
-    restart: unless-stopped
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: sentinel-grafana
+  #   restart: unless-stopped
 
-    depends_on:
-      - prometheus
+  #   depends_on:
+  #     - prometheus
 
-    volumes:
-      - grafana_data:/var/lib/grafana
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
 
-    ports:
-      - "${GRAFANA_PORT}:3000"
+  #   ports:
+  #     - "${GRAFANA_PORT}:3000"
 
-    networks:
-      - sentinel
+  #   networks:
+  #     - sentinel
 
 
 volumes:

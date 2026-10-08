@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-
 import { useAuth } from "../composables/useAuth";
 
 const router = useRouter();
 
-const { login, register } = useAuth();
+const {
+  login,
+  register,
+} = useAuth();
 
 const isLogin = ref(true);
 
@@ -18,8 +20,122 @@ const loading = ref(false);
 const error = ref("");
 const success = ref("");
 
+function getAuthErrorMessage(err: any): string {
+  /*
+   * Pas de réponse du serveur :
+   * problème réseau, backend arrêté, mauvaise URL, etc.
+   */
+  if (!err?.response) {
+    return "Impossible de contacter le serveur. Vérifiez que le serveur est disponible.";
+  }
+
+  const status = err.response.status;
+  const detail = err.response.data?.detail;
+
+  /*
+   * Identifiants incorrects
+   */
+  if (status === 401) {
+    return "Email ou mot de passe incorrect.";
+  }
+
+  /*
+   * Compte désactivé
+   */
+  if (status === 403) {
+    return "Votre compte est désactivé. Contactez un administrateur.";
+  }
+
+  /*
+   * Ressource déjà existante
+   * Exemple :
+   * "Email or username already registered"
+   */
+  if (status === 409) {
+    return "Cet email ou nom d'utilisateur est déjà utilisé.";
+  }
+
+  /*
+   * Erreur de validation FastAPI
+   *
+   * FastAPI peut renvoyer :
+   *
+   * detail: [
+   *   {
+   *     loc: ["body", "email"],
+   *     msg: "...",
+   *     type: "..."
+   *   }
+   * ]
+   */
+  if (status === 422) {
+    if (Array.isArray(detail)) {
+      const fields = detail
+        .map((item: any) => item?.loc?.at(-1))
+        .filter(Boolean);
+
+      if (fields.includes("email")) {
+        return "Veuillez saisir une adresse email valide.";
+      }
+
+      if (fields.includes("username")) {
+        return "Le nom d'utilisateur n'est pas valide.";
+      }
+
+      if (fields.includes("password")) {
+        return "Le mot de passe ne respecte pas les règles requises.";
+      }
+
+      return "Certaines informations saisies sont invalides.";
+    }
+
+    return "Certaines informations saisies sont invalides.";
+  }
+
+  /*
+   * Erreur serveur
+   */
+  if (status >= 500) {
+    return "Une erreur interne du serveur est survenue. Veuillez réessayer plus tard.";
+  }
+
+  /*
+   * Cas où le backend nous renvoie une erreur
+   * connue mais différente.
+   */
+  if (typeof detail === "string") {
+    switch (detail) {
+      case "Invalid credentials":
+        return "Email ou mot de passe incorrect.";
+
+      case "Email or username already registered":
+        return "Cet email ou nom d'utilisateur est déjà utilisé.";
+
+      case "User account is disabled":
+        return "Votre compte est désactivé. Contactez un administrateur.";
+
+      case "Invalid refresh token":
+        return "Votre session a expiré. Veuillez vous reconnecter.";
+
+      case "Refresh token already revoked":
+        return "Votre session a expiré. Veuillez vous reconnecter.";
+
+      default:
+        break;
+    }
+  }
+
+  /*
+   * Erreur inconnue
+   */
+  return "Une erreur est survenue. Veuillez réessayer.";
+}
+
 async function handleSubmit() {
   loading.value = true;
+
+  // On efface l'ancien message uniquement
+  // lorsqu'une nouvelle tentative commence.
   error.value = "";
   success.value = "";
 
@@ -51,7 +167,7 @@ async function handleSubmit() {
     username.value = "";
     password.value = "";
   } catch (err: any) {
-    error.value = err.response?.data?.detail ?? "Une erreur est survenue.";
+    error.value = getAuthErrorMessage(err);
   } finally {
     loading.value = false;
   }
@@ -70,9 +186,10 @@ function toggleMode() {
     <div class="relative w-full max-w-md rounded-xl bg-white p-8 shadow">
       <!-- Header -->
       <div class="mb-8">
-        <h1 class="text-2xl font-bold text-gray-900">Sentinel-X</h1>
+        <h1 class="text-2xl font-bold text-gray-900">
+          Sentinel-X
+        </h1>
 
-        <!-- bouton de fermeture -->
         <!-- Retour à l'accueil -->
         <RouterLink
           to="/"
@@ -103,7 +220,8 @@ function toggleMode() {
       <!-- Error -->
       <div
         v-if="error"
-        class="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600"
+        class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+        role="alert"
       >
         {{ error }}
       </div>
@@ -111,12 +229,16 @@ function toggleMode() {
       <!-- Success -->
       <div
         v-if="success"
-        class="mb-5 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-600"
+        class="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600"
+        role="status"
       >
         {{ success }}
       </div>
 
-      <form class="space-y-5" @submit.prevent="handleSubmit">
+      <form
+        class="space-y-5"
+        @submit.prevent="handleSubmit"
+      >
         <!-- Username -->
         <div v-if="!isLogin">
           <label
@@ -171,7 +293,11 @@ function toggleMode() {
             v-model="password"
             type="password"
             required
-            :autocomplete="isLogin ? 'current-password' : 'new-password'"
+            :autocomplete="
+              isLogin
+                ? 'current-password'
+                : 'new-password'
+            "
             placeholder="••••••••"
             class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 outline-none transition focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
           />
