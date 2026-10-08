@@ -5,6 +5,7 @@ import threading
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 
 # ============================================================================
@@ -12,12 +13,9 @@ from fastapi.responses import StreamingResponse
 # ============================================================================
 
 CAMERA_INDEX = 0
-
 AI_URL = "http://127.0.0.1:8001/detect"
-
 # Intervalle entre deux analyses IA
 ANALYSIS_INTERVAL = 1.0
-
 JPEG_QUALITY = 80
 
 
@@ -29,6 +27,16 @@ app = FastAPI(
     title="Sentinel-X Camera",
     description="Flux vidéo et surveillance Sentinel-X",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

@@ -12,9 +12,16 @@ export function useCamera() {
 
   async function fetchStatus() {
     try {
-      status.value = await getCameraStatus();
+      const data = await getCameraStatus();
+
+      status.value = data;
       connected.value = true;
-    } catch {
+    } catch (error) {
+      console.error(
+        "[CAMERA] Impossible de récupérer le statut",
+        error
+      );
+
       connected.value = false;
     }
   }
@@ -29,8 +36,8 @@ export function useCamera() {
   });
 
   onUnmounted(() => {
-    if (interval) {
-      clearInterval(interval);
+    if (interval !== undefined) {
+      window.clearInterval(interval);
     }
   });
 

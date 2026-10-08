@@ -1,14 +1,16 @@
-import api from "./api";
-
 import type { CameraStatus } from "../types/camera";
 
-const cameraApi = "http://localhost:9000";
+const CAMERA_API_URL = "http://localhost:9000";
 
 export async function getCameraStatus(): Promise<CameraStatus> {
-  const response = await fetch(`${cameraApi}/status`);
+  const response = await fetch(
+    `${CAMERA_API_URL}/status`
+  );
 
   if (!response.ok) {
-    throw new Error("Impossible de récupérer l'état de la caméra.");
+    throw new Error(
+      `Erreur caméra : ${response.status}`
+    );
   }
 
   return response.json();
