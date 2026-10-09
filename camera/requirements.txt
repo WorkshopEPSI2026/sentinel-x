@@ -3,3 +3,4 @@ uvicorn[standard]
 opencv-python
 requests
 imageio-ffmpeg
+paho-mqtt>=2.0

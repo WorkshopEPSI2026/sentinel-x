@@ -1,5 +1,8 @@
+import os
 import cv2
+import json
 import requests
+import paho.mqtt.client as mqtt
 import time
 import threading
 import subprocess
@@ -16,8 +19,21 @@ from fastapi.middleware.cors import CORSMiddleware
 # CONFIGURATION
 # ============================================================================
 
-CAMERA_INDEX = 0
-AI_URL = "http://127.0.0.1:8001/detect"
+# 0 = webcam intégrée du PC, 1 = webcam USB externe (en général)
+# Modifiable sans toucher au code : $env:CAMERA_INDEX=2 avant de lancer
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "1"))
+# Flux réseau à la place d'une webcam (utile dans Docker) :
+#   CAMERA_SOURCE=http://192.168.1.20:8080/video  (ex. appli « IP Webcam » du téléphone)
+CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "").strip()
+AI_URL = os.getenv("AI_URL", "http://127.0.0.1:8001/detect")
+
+# Alertes d'intrusion -> MQTT (même canal que les alertes du boîtier)
+MQTT_HOST = os.getenv("MQTT_HOST", "127.0.0.1")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+TOPIC_ALERTS = "sentinel/esp8266/alerts"
+CAMERA_ID = os.getenv("CAMERA_ID", "camera-01")
+# Fin d'alerte après X secondes sans personne détectée
+INTRUSION_CLEAR_S = float(os.getenv("INTRUSION_CLEAR_S", "10"))
 
 ANALYSIS_INTERVAL = 1.0
 JPEG_QUALITY = 80
@@ -55,12 +71,78 @@ app.add_middleware(
 # WEBCAM
 # ============================================================================
 
-camera = cv2.VideoCapture(CAMERA_INDEX)
+def open_camera(index):
+    """Ouvre la webcam (index) ou un flux réseau (URL)."""
+    if isinstance(index, str):
+        cam = cv2.VideoCapture(index)
+    else:
+        # DirectShow sous Windows : plus fiable pour les webcams USB
+        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+        cam = cv2.VideoCapture(index, backend)
+    if cam.isOpened() and cam.read()[0]:
+        return cam
+    cam.release()
+    return None
 
-if not camera.isOpened():
+
+if CAMERA_SOURCE:
+    CAMERA_INDEX = CAMERA_SOURCE
+camera = open_camera(CAMERA_INDEX)
+
+# Webcam USB débranchée -> on se rabat sur la webcam intégrée
+if camera is None and not CAMERA_SOURCE and CAMERA_INDEX != 0:
+    print(f"[CAMERA] webcam {CAMERA_INDEX} introuvable, utilisation de la webcam 0")
+    CAMERA_INDEX = 0
+    camera = open_camera(0)
+
+if camera is None:
     raise RuntimeError(
-        "Impossible d'ouvrir la webcam."
+        f"Impossible d'ouvrir la caméra ({CAMERA_SOURCE or CAMERA_INDEX})."
     )
+
+print(f"[CAMERA] caméra utilisée : {CAMERA_INDEX}")
+
+
+# ============================================================================
+# ALERTES D'INTRUSION (MQTT)
+# ============================================================================
+
+mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=CAMERA_ID)
+mqtt_client.connect_async(MQTT_HOST, MQTT_PORT)   # ne bloque pas si le broker est absent
+mqtt_client.loop_start()
+
+intrusion_active = False
+last_person_seen = 0.0
+
+
+def publish_intrusion(state: str, count: int):
+    alert = {
+        "device_id": CAMERA_ID,
+        "source": "vision",
+        "type": "INTRUSION",
+        "state": state,
+        "value": count,
+        "detail": {"persons": count},
+    }
+    if mqtt_client.is_connected():
+        mqtt_client.publish(TOPIC_ALERTS, json.dumps(alert), qos=1)
+        print(f"[ALERTE] Intrusion {state} ({count} personne(s))")
+    else:
+        print(f"[ALERTE] MQTT non connecté ({MQTT_HOST}:{MQTT_PORT}), alerte non envoyée")
+
+
+def update_intrusion(detected: bool, count: int):
+    """TRIGGERED dès qu'une personne apparaît, CLEARED après INTRUSION_CLEAR_S sans personne."""
+    global intrusion_active, last_person_seen
+    now = time.time()
+    if detected:
+        last_person_seen = now
+        if not intrusion_active:
+            intrusion_active = True
+            publish_intrusion("TRIGGERED", count)
+    elif intrusion_active and now - last_person_seen >= INTRUSION_CLEAR_S:
+        intrusion_active = False
+        publish_intrusion("CLEARED", 0)
 
 
 # ============================================================================
@@ -224,6 +306,7 @@ def stop_recording():
         )
 
         # La conversion s'effectue après la fermeture du fichier.
+        filepath = RECORDINGS_DIR / filename
         converted = convert_to_h264(filepath)
         
         return {
@@ -343,6 +426,12 @@ def ai_worker():
                     )
 
                     ai_available = True
+
+                # ----------------------------------------------------
+                # Alerte d'intrusion (dashboard -> alertes en cours)
+                # ----------------------------------------------------
+
+                update_intrusion(person_detected, persons_count)
 
                 # ----------------------------------------------------
                 # Logs
