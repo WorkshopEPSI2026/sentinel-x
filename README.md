@@ -4,7 +4,7 @@
 
 SENTINEL-X est une solution de **surveillance cyber-physique Edge** destinée à la protection d'infrastructures industrielles isolées.
 
-Le système combine la collecte de données environnementales par **IoT**, la **détection d'intrusions**, l'analyse vidéo par **intelligence artificielle**, la détection d'anomalies et une infrastructure locale conteneurisée.
+Le système combine la collecte de données environnementales par **IoT**, la **détection d'intrusions**, l'analyse vidéo par **intelligence artificielle**, la **détection d'anomalies par machine learning** et une infrastructure locale conteneurisée.
 
 L'objectif est de permettre à un opérateur de **surveiller, analyser et réagir en temps réel** aux événements affectant une infrastructure critique, même dans un environnement disposant d'une connectivité limitée.
 
@@ -14,18 +14,21 @@ L'objectif est de permettre à un opérateur de **surveiller, analyser et réagi
 
 - [Contexte](#-contexte)
 - [Objectifs](#-objectifs)
-- [Fonctionnalités](#-fonctionnalités)
-- [Architecture](#-architecture)
+- [Fonctionnalités](#️-fonctionnalités)
+- [Architecture](#️-architecture)
 - [Stack technique](#-stack-technique)
 - [Structure du projet](#-structure-du-projet)
 - [Prérequis](#-prérequis)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
 - [Lancement](#-lancement)
+- [Mise en route de l'ESP8266](#-mise-en-route-de-lesp8266)
 - [Services](#-services)
 - [Communication](#-communication)
+- [Base de données et migrations](#️-base-de-données-et-migrations)
 - [Sécurité](#-sécurité)
 - [Supervision](#-supervision)
+- [FabLab : boîtier et câblage](#-fablab--boîtier-et-câblage)
 - [Développement](#-développement)
 - [Démonstration](#-démonstration)
 - [Équipe](#-équipe)
@@ -50,12 +53,10 @@ Le système est conçu pour fonctionner localement afin de limiter sa dépendanc
 
 # 🚀 Objectifs
 
-Les objectifs principaux du projet sont :
-
 - collecter des données provenant de capteurs IoT ;
-- transmettre ces données de manière sécurisée ;
+- transmettre ces données au serveur local (MQTT) ;
 - superviser l'état de l'infrastructure en temps réel ;
-- détecter les présences physiques ;
+- détecter les présences physiques (PIR + caméra) ;
 - analyser le flux d'une webcam avec une IA de vision ;
 - détecter des anomalies dans les séries temporelles ;
 - générer des alertes ;
@@ -63,7 +64,7 @@ Les objectifs principaux du projet sont :
 - centraliser les données ;
 - superviser l'infrastructure informatique ;
 - appliquer des mesures de cybersécurité ;
-- proposer une démonstration physique du système.
+- proposer une démonstration physique du système (boîtier FabLab).
 
 ---
 
@@ -71,87 +72,100 @@ Les objectifs principaux du projet sont :
 
 ## 🌡️ Surveillance environnementale
 
-L'ESP8266 collecte les informations provenant de différents capteurs :
+Le boîtier **ESP8266 (Wemos D1 mini)** collecte les informations de ses capteurs et les envoie toutes les **2 secondes** au serveur local via MQTT (Wi-Fi).
 
-| Capteur | Fonction |
-|---|---|
-| DHT22 | Température et humidité |
-| MQ-2 | Détection de gaz/fumée |
-| PIR | Détection de mouvement |
-| OLED | Affichage local |
-| Buzzer | Alerte sonore |
-| LED | Signalisation visuelle |
+| Composant | Broche | Fonction |
+|---|---|---|
+| DHT22 | D5 | Température et humidité |
+| MQ-2 | A0 | Détection de gaz/fumée |
+| PIR (HC-SR501) | D6 | Détection de mouvement |
+| OLED SSD1306 (I2C) | D2 (SDA) / D1 (SCL) | Affichage local de l'état |
+| LED rouge | D3 | **Alarme gaz locale** : clignote quand le gaz dépasse le seuil |
+| LED bleue | D0 | **Présence** détectée, ou commande depuis le dashboard |
 
-Les données sont transmises au serveur local via MQTT.
+L'alarme gaz fonctionne **directement dans le boîtier**, même sans réseau. Le seuil se règle dans `sentinel-iot/src/main.cpp` (`GAS_ALARM_ON` / `GAS_ALARM_OFF`). Elle est désactivée pendant la première minute, le temps que le MQ-2 chauffe.
 
 ---
 
 ## 👁️ Détection vidéo par IA
 
-Une webcam USB connectée au PC serveur local permet d'analyser l'environnement.
+Une webcam USB connectée au PC serveur analyse l'environnement.
 
-Le module de vision utilise :
+- **Service caméra** (`camera/`, port 9000) : capture la webcam, diffuse le flux vidéo et enregistre les incidents (`camera/recordings`).
+- **IA vision** (`ai/`, port 8001) : YOLOv8n détecte les personnes sur les images.
 
-- Python ;
-- OpenCV ;
-- YOLOv8-tiny.
-
-La vidéo reste traitée localement.
-
-Le système transmet uniquement les résultats de détection au backend.
+La vidéo reste traitée localement : seuls les résultats de détection sortent du PC.
 
 ```text
-Webcam
+Webcam USB
    ↓
-OpenCV / YOLO
+Service caméra (OpenCV)  ──image──►  IA vision (YOLOv8)
+   ↓                                      │
+   ◄──────────── personne détectée ───────┘
    ↓
-Détection d'une personne
+MQTT  sentinel/esp8266/alerts  (type INTRUSION)
    ↓
-Backend FastAPI
+Backend FastAPI → base de données → WebSocket
    ↓
-Création d'une alerte
-   ↓
-Dashboard
+Dashboard : « Intrusion (caméra) » dans les alertes en cours
 ```
+
+L'alerte se termine automatiquement après 10 s sans personne détectée.
 
 ---
 
-## 📊 Détection d'anomalies
+## 📊 Détection d'anomalies (IA)
 
-SENTINEL-X prévoit également l'analyse des séries temporelles afin d'identifier des comportements inhabituels.
+Service indépendant `ai/anomaly/` (port 8002), basé sur **Isolation Forest** (scikit-learn).
 
-L'objectif n'est pas simplement d'utiliser des seuils fixes, mais de détecter des comportements anormaux dans les données.
+Plutôt qu'un seuil fixe, l'IA **apprend le comportement normal** du boîtier, puis signale tout écart :
 
-Les algorithmes envisagés comprennent notamment :
+- analyse d'une **fenêtre glissante de 60 s** (30 mesures) ;
+- **7 indicateurs** : température, humidité, gaz, pente de la température, pente du gaz, agitation du gaz, corrélation température/gaz ;
+- alerte `ANOMALY` après **3 fenêtres anormales d'affilée**, fin d'alerte automatique ;
+- alertes **explicables** sur le dashboard (« la température monte vite (+1,5 °C/min) », « température et gaz montent ensemble »…) ;
+- entraînement en un clic depuis le dashboard, avec auto-évaluation (fausses alertes, délai de détection).
 
-- Isolation Forest ;
-- Random Forest.
+Sur nos tests : **0 fausse alerte**, et une dérive lente détectée en **~12 s**, contre ~520 s pour un seuil fixe « gaz > 600 ».
+
+Documentation complète : [`ai/anomaly/README.md`](ai/anomaly/README.md) et `ai/anomaly/IA_detection_anomalies_Sentinel-X.pdf`.
 
 ---
 
 ## 🚨 Alertes
 
-Les différents événements détectés peuvent générer des alertes :
+| Type | Source | Déclencheur |
+|---|---|---|
+| `PIR` | Boîtier | mouvement détecté |
+| `GAS` | Boîtier | gaz au-dessus du seuil |
+| `INTRUSION` | IA vision | personne détectée par la caméra |
+| `ANOMALY` | IA anomalies | comportement inhabituel des capteurs |
 
-- mouvement détecté ;
-- présence humaine détectée par IA ;
-- anomalie environnementale ;
-- comportement inhabituel d'un capteur ;
-- événement de sécurité.
-
-Les alertes sont ensuite visibles depuis l'interface de supervision.
+Toutes les alertes sont enregistrées en base, poussées en temps réel au dashboard (WebSocket) et visibles dans **Alertes en cours** et dans **Historique des alertes**. Une alerte peut être clôturée par l'opérateur (`POST /api/alerts/{id}/resolve`).
 
 ---
 
 ## 🔔 Actionneurs
 
-L'opérateur peut également agir sur le système.
+Le firmware écoute les commandes MQTT sur `sentinel/esp8266/cmd` :
 
-Le backend peut transmettre une commande MQTT à l'ESP8266 afin de :
+```json
+{"led": "on"}
+```
 
-- allumer une LED ;
-- activer le buzzer ;
-- signaler une situation d'urgence.
+La LED bleue du boîtier s'allume (ou s'éteint avec `"off"`). Test depuis le PC :
+
+```powershell
+docker exec -it sentinel-mqtt mosquitto_pub -t sentinel/esp8266/cmd -m '{\"led\":\"on\"}'
+```
+
+> Le bouton de commande dans le dashboard (route backend qui publie sur ce topic) reste à ajouter.
+
+---
+
+## 🎞️ Enregistrements vidéo
+
+Le service caméra enregistre les incidents dans `camera/recordings/` (MP4 H.264). Le backend les expose via `GET /api/recordings` et `GET /api/recordings/{filename}`.
 
 ---
 
@@ -160,38 +174,33 @@ Le backend peut transmettre une commande MQTT à l'ESP8266 afin de :
 SENTINEL-X utilise une architecture **Edge Computing locale**.
 
 ```text
-                         ┌──────────────────────────┐
-                         │       PC SERVEUR         │
-                         │        WINDOWS           │
-                         │                          │
-                         │  ┌────────────────────┐  │
-                         │  │ Docker Compose     │  │
-                         │  │                    │  │
-                         │  │ Vue 3 / Vite       │  │
-                         │  │ FastAPI             │  │
-                         │  │ PostgreSQL          │  │
-                         │  │ MQTT Mosquitto      │  │
-                         │  │ Prometheus          │  │
-                         │  │ Grafana             │  │
-                         │  └────────────────────┘  │
-                         │                          │
-                         │      Python / YOLO       │
-                         │             ▲            │
-                         └─────────────┼────────────┘
-                                       │
-                                    Webcam
-                                       │
-                              ┌────────▼────────┐
-                              │     ESP8266      │
-                              │                  │
-                              │ DHT22            │
-                              │ MQ-2             │
-                              │ PIR              │
-                              │ OLED             │
-                              │ LED              │
-                              │ Buzzer           │
-                              └──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     PC SERVEUR (Windows)                         │
+│                                                                  │
+│  ┌───────────────────── Docker Compose ───────────────────────┐  │
+│  │                                                            │  │
+│  │  Frontend Vue 3 (5173)        Backend FastAPI (8000)       │  │
+│  │  PostgreSQL (5432)            Adminer (8080)               │  │
+│  │  MQTT Mosquitto (1883)        IA vision YOLOv8 (8001)      │  │
+│  │  IA anomalies (8002)          Prometheus / Grafana / cAdvisor │
+│  │                                                            │  │
+│  └──────────────▲────────────────────────▲────────────────────┘  │
+│                 │ MQTT                   │ HTTP /detect          │
+│        Service caméra (9000) ────────────┘                       │
+│        hors Docker (accès webcam USB)                            │
+│                 ▲                                                │
+└─────────────────┼────────────────────────────────────────────────┘
+                  │ USB                        ▲
+               Webcam                          │ Wi-Fi / MQTT
+                                               │
+                                  ┌────────────┴────────────┐
+                                  │   ESP8266 (D1 mini)     │
+                                  │   DHT22 · MQ-2 · PIR    │
+                                  │   OLED · LED rouge/bleue│
+                                  └─────────────────────────┘
 ```
+
+> Sous Windows, Docker Desktop ne peut pas accéder aux webcams USB : le service caméra tourne donc directement sur le PC. Le script `start.ps1` le lance automatiquement.
 
 ---
 
@@ -204,30 +213,34 @@ SENTINEL-X utilise une architecture **Edge Computing locale**.
 - Vite
 - Tailwind CSS
 - Axios
+- Chart.js
 
 ## Backend
 
 - Python
 - FastAPI
 - Uvicorn
+- SQLAlchemy + Alembic
+- paho-mqtt
+- JWT (access + refresh tokens)
 
 ## IoT
 
-- ESP8266
-- C++
-- MQTT
+- ESP8266 (Wemos D1 mini)
+- C++ / PlatformIO
+- MQTT (PubSubClient)
 - Mosquitto
 
 ## Base de données
 
-- PostgreSQL
+- PostgreSQL 16
 
 ## Intelligence artificielle
 
 - Python
 - OpenCV
-- YOLOv8-tiny
-- scikit-learn
+- YOLOv8n (Ultralytics) — vision
+- scikit-learn (Isolation Forest) — anomalies
 
 ## Infrastructure
 
@@ -239,10 +252,16 @@ SENTINEL-X utilise une architecture **Edge Computing locale**.
 
 - Prometheus
 - Grafana
+- cAdvisor
 
 ## Administration
 
 - Adminer
+
+## FabLab
+
+- Autodesk Fusion 360
+- Impression 3D (Creality) / découpe laser
 
 ---
 
@@ -251,41 +270,51 @@ SENTINEL-X utilise une architecture **Edge Computing locale**.
 ```text
 sentinel-x/
 │
-├── backend/
+├── backend/                 # API FastAPI, MQTT, WebSocket, base de données
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── alembic/             # migrations de la base
 │   └── app/
-│       └── main.py
-│
-├── frontend/
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── components/
-│       ├── views/
-│       ├── services/
-│       │   └── api.ts
+│       ├── main.py
+│       ├── mqtt_client.py
+│       ├── models/  schemas/  routers/  services/
 │       └── ...
+│
+├── frontend/                # Dashboard Vue 3
+│   ├── Dockerfile
+│   └── src/
+│       ├── components/      # dashboard/, alerts/, telemetry/
+│       ├── composables/     # useTelemetry, useAlerts, useAnomaly, useCamera...
+│       ├── views/
+│       └── services/
+│
+├── ai/
+│   ├── app/                 # IA vision YOLOv8 (port 8001)
+│   ├── dockerfile
+│   └── anomaly/             # IA détection d'anomalies (port 8002)
+│       ├── detector.py
+│       ├── main.py
+│       └── README.md
+│
+├── camera/                  # Service caméra (webcam, flux, enregistrements)
+│   ├── camera.py
+│   ├── lister_cameras.py
+│   └── Dockerfile
+│
+├── sentinel-iot/            # Firmware ESP8266 (PlatformIO)
+│   ├── platformio.ini
+│   ├── include/secrets.h    # Wi-Fi + IP du serveur (non commité)
+│   └── src/main.cpp
+│
+├── fablab/                  # Boîtier (Fusion 360, impression 3D, laser) + schéma électrique
 │
 ├── infrastructure/
 │   ├── mosquitto/
-│   │   ├── config/
-│   │   └── data/
-│   │
 │   └── prometheus/
-│       └── prometheus.yml
-│
-├── ai/
-│   └── ...
-│
-├── iot/
-│   └── ...
 │
 ├── docker-compose.yml
-├── .env
+├── start.ps1                # lance tout le projet (Docker + migrations + caméra)
 ├── .env.example
-├── .gitignore
 └── README.md
 ```
 
@@ -293,24 +322,18 @@ sentinel-x/
 
 # 💻 Prérequis
 
-Pour lancer le projet, vous devez disposer de :
-
 - Windows 10/11 ;
 - Docker Desktop ;
-- Docker Compose ;
 - Git ;
-- une webcam USB pour la partie vision ;
-- un ESP8266 pour la partie IoT.
+- Python 3.10+ (pour le service caméra) ;
+- VS Code + PlatformIO (pour le firmware ESP8266) ;
+- une webcam USB ;
+- le boîtier ESP8266 monté.
 
 Vérifier Docker :
 
 ```bash
 docker --version
-```
-
-Puis :
-
-```bash
 docker compose version
 ```
 
@@ -325,27 +348,19 @@ git clone <URL_DU_REPOSITORY>
 cd sentinel-x
 ```
 
-Créer le fichier d'environnement :
-
-```bash
-cp .env.example .env
-```
-
-Sous PowerShell :
+Créer le fichier d'environnement (PowerShell) :
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Adapter ensuite les variables d'environnement si nécessaire.
+Adapter ensuite les variables si nécessaire.
 
 ---
 
 # 🔐 Configuration
 
-Le projet utilise un fichier `.env` à la racine.
-
-Exemple :
+Le projet utilise un fichier `.env` à la racine (voir `.env.example`) :
 
 ```env
 POSTGRES_DB=sentinel
@@ -354,109 +369,140 @@ POSTGRES_PASSWORD=change-me
 POSTGRES_PORT=5432
 
 BACKEND_PORT=8000
-
 MQTT_BROKER=mqtt
 MQTT_PORT=1883
+
+JWT_SECRET_KEY=<clé secrète longue et aléatoire>
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
 FRONTEND_PORT=5173
 VITE_API_URL=http://localhost:8000
 
 ADMINER_PORT=8080
-
 PROMETHEUS_PORT=9090
 GRAFANA_PORT=3000
+
+# Optionnel : caméra dans Docker avec un flux réseau (téléphone...)
+# CAMERA_SOURCE=http://192.168.1.20:8080/video
 ```
 
 ### ⚠️ Important
 
-Le fichier `.env` ne doit **jamais être commité** dans Git.
-
-Utiliser :
-
-```text
-.env
-```
-
-dans `.gitignore`.
-
-Le fichier à partager avec l'équipe est :
-
-```text
-.env.example
-```
+- Le fichier `.env` ne doit **jamais être commité** dans Git (il est dans `.gitignore`).
+- Le fichier à partager avec l'équipe est `.env.example`.
+- `sentinel-iot/include/secrets.h` (mot de passe Wi-Fi) ne doit pas non plus être commité.
 
 ---
 
-# 🐳 Lancement avec Docker
+# 🐳 Lancement
+
+## Méthode recommandée : une seule commande
 
 Depuis la racine du projet :
 
-```bash
-docker compose up --build
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
-Pour lancer les conteneurs en arrière-plan :
+Le script :
 
-```bash
-docker compose up --build -d
+1. démarre tous les conteneurs (`docker compose up -d`) ;
+2. applique les migrations de la base (`alembic upgrade heads`) ;
+3. lance le service caméra sur la **webcam USB** (index 1).
+
+Pour utiliser la webcam intégrée du PC :
+
+```powershell
+.\start.ps1 -Camera 0
 ```
 
-Vérifier les conteneurs :
+## Commandes Docker utiles
 
 ```bash
-docker compose ps
+docker compose up -d --build        # (re)construire et lancer
+docker compose ps                   # état des conteneurs
+docker compose logs -f backend      # logs du backend
+docker compose down                 # arrêter (les données sont conservées)
 ```
 
-Arrêter les services :
+> ⚠️ `docker compose down -v` **supprime la base de données** (volume `postgres_data`).
+
+## Caméra dans Docker (flux réseau)
+
+Si la caméra est un flux réseau (et non une webcam USB), définir `CAMERA_SOURCE` dans `.env`, puis :
 
 ```bash
-docker compose down
+docker compose --profile camera up -d --build
 ```
 
-Voir les logs :
+## Choisir la webcam
 
-```bash
-docker compose logs -f
+Si l'image ne vient pas de la bonne webcam :
+
+```powershell
+cd camera
+python lister_cameras.py
 ```
 
-Voir les logs du backend :
+Le script enregistre une photo par webcam détectée (`webcam_0.jpg`, `webcam_1.jpg`…). Lancer ensuite `start.ps1 -Camera <numéro>`.
 
-```bash
-docker compose logs -f backend
+---
+
+# 📶 Mise en route de l'ESP8266
+
+1. Trouver l'adresse IP du PC serveur : `ipconfig` → **Adresse IPv4** de la carte Wi-Fi.
+2. Créer `sentinel-iot/include/secrets.h` :
+
+```cpp
+#define WIFI_SSID  "NomDuWifi"
+#define WIFI_PASS  "MotDePasse"
+#define MQTT_HOST  "192.168.1.42"   // IP du PC serveur
+#define MQTT_PORT  1883
+#define MQTT_USER  ""
+#define MQTT_PASS  ""
 ```
 
-Voir les logs du frontend :
+3. Autoriser MQTT dans le pare-feu Windows (PowerShell administrateur, une seule fois) :
 
-```bash
-docker compose logs -f frontend
+```powershell
+New-NetFirewallRule -DisplayName "MQTT Sentinel-X" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow
+```
+
+4. Dans VS Code / PlatformIO : **Upload**, puis **Serial Monitor** (115200 bauds) pour vérifier la connexion Wi-Fi et MQTT.
+
+> L'ESP8266 ne fonctionne qu'en **Wi-Fi 2,4 GHz**. Le PC et l'ESP doivent être sur le même réseau.
+
+Vérifier la réception des messages :
+
+```powershell
+docker exec -it sentinel-mqtt mosquitto_sub -t "sentinel/#" -v
 ```
 
 ---
 
 # 🌐 Services
 
-Une fois Docker lancé :
-
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:5173 |
+| Frontend (dashboard) | http://localhost:5173 |
 | Backend | http://localhost:8000 |
 | API documentation | http://localhost:8000/docs |
+| IA vision | http://localhost:8001 |
+| IA anomalies (Swagger) | http://localhost:8002/docs |
+| Service caméra | http://localhost:9000 |
+| MQTT (Mosquitto) | localhost:1883 |
 | Adminer | http://localhost:8080 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
+| cAdvisor | http://localhost:8081 |
 
 ---
 
 # 🔌 Connexion à PostgreSQL avec Adminer
 
-Accéder à :
-
-```text
-http://localhost:8080
-```
-
-Utiliser :
+Accéder à http://localhost:8080 :
 
 ```text
 Système : PostgreSQL
@@ -466,140 +512,116 @@ Mot de passe : <POSTGRES_PASSWORD>
 Base de données : sentinel
 ```
 
-⚠️ Depuis un conteneur Docker, le serveur PostgreSQL est accessible avec :
-
-```text
-postgres
-```
-
-et non :
-
-```text
-localhost
-```
+⚠️ Depuis un conteneur Docker, le serveur PostgreSQL est accessible avec `postgres`, et non `localhost`.
 
 ---
 
 # 📡 Communication
 
-SENTINEL-X utilise plusieurs mécanismes de communication selon les besoins.
-
 ## MQTT
 
-MQTT est utilisé pour les communications IoT.
+MQTT est le canal de tous les événements terrain.
 
-```text
-ESP8266
-   │
-   │ MQTT
-   ▼
-Mosquitto
-   │
-   ▼
-FastAPI
+| Topic | Émetteur | Contenu |
+|---|---|---|
+| `sentinel/esp8266/telemetry` | ESP8266 | mesures toutes les 2 s |
+| `sentinel/esp8266/events` | ESP8266 | événements PIR / GAS |
+| `sentinel/esp8266/alerts` | IA anomalies, caméra | alertes ANOMALY / INTRUSION |
+| `sentinel/esp8266/cmd` | opérateur | commandes vers le boîtier |
+| `sentinel/esp8266/status` | ESP8266 | `online` / `offline` (Last Will) |
+
+Exemple de télémétrie :
+
+```json
+{"device_id":"esp8266-01","temperature":23.4,"humidity":45.1,"gas":43,"presence":false}
 ```
-
-Il permet notamment de transmettre :
-
-- température ;
-- humidité ;
-- gaz/fumée ;
-- présence ;
-- commandes des actionneurs.
-
----
 
 ## REST API
 
-FastAPI expose une API REST utilisée par le frontend.
+FastAPI expose une API REST utilisée par le frontend (authentification, télémétrie, alertes…). Documentation interactive : http://localhost:8000/docs.
+
+## WebSocket
+
+Les WebSockets poussent en temps réel la télémétrie et les alertes vers le dashboard.
 
 ```text
-Vue
- │
- │ HTTP
- ▼
-FastAPI
- │
- ├── PostgreSQL
- └── MQTT
+ESP8266 / IA / caméra
+   ↓
+ MQTT
+   ↓
+FastAPI (base de données)
+   ↓
+WebSocket
+   ↓
+Vue (dashboard)
 ```
 
 ---
 
-## WebSocket
+# 🗄️ Base de données et migrations
 
-Les WebSockets sont utilisés pour la remontée des événements en temps réel vers le dashboard.
+Le schéma est géré par **Alembic** (`backend/alembic/versions`).
 
-```text
-ESP8266
-   ↓
- MQTT
-   ↓
-FastAPI
-   ↓
-WebSocket
-   ↓
-Vue
+- **À chaque démarrage** : `alembic upgrade heads` (fait automatiquement par `start.ps1`).
+
+```bash
+docker compose exec backend alembic upgrade heads
 ```
+
+- **Seulement après avoir modifié un modèle** (`backend/app/models`) : créer une nouvelle migration.
+
+```bash
+docker compose exec backend alembic revision --autogenerate -m "description du changement"
+```
+
+> ⚠️ Ne pas lancer `revision --autogenerate` à chaque démarrage : cela crée des migrations en double.
+
+Les données sont conservées dans le volume Docker `postgres_data` (elles survivent à `build`, `up` et `down`).
 
 ---
 
 # 🔐 Sécurité
 
-La sécurité constitue un des piliers du projet.
+## Mis en place
 
-Les mesures prévues comprennent notamment :
+- authentification **JWT** (access token + refresh token avec rotation) ;
+- mots de passe hachés (Argon2) ;
+- secrets hors du code (`.env`, `secrets.h`, non commités) ;
+- isolation des services dans un réseau Docker dédié ;
+- traitement vidéo **local** : seuls les résultats de détection sortent de la caméra ;
+- alarme gaz autonome dans le boîtier (fonctionne sans réseau).
 
-- isolation des services Docker ;
-- segmentation réseau ;
-- authentification ;
-- communication sécurisée ;
-- sécurisation de MQTT ;
+## À renforcer
+
+- authentification MQTT (le broker accepte actuellement les connexions anonymes) et TLS ;
 - HTTPS ;
-- durcissement du serveur ;
-- pare-feu ;
-- accès SSH par clés ;
-- journalisation ;
-- supervision ;
-- audit réseau.
-
-Les outils envisagés pour les audits comprennent notamment :
-
-- Nmap ;
-- Wireshark ;
-- Metasploit ;
-- Trivy.
+- durcissement du serveur et pare-feu ;
+- journalisation et audit réseau (Nmap, Wireshark, Trivy…).
 
 ---
 
 # 📈 Supervision
 
-Prometheus collecte les métriques exposées par les services.
-
-Grafana permet ensuite de construire des dashboards de supervision.
+Prometheus collecte les métriques (dont celles des conteneurs via cAdvisor), Grafana les affiche dans des dashboards.
 
 ```text
-Services
-   │
+Services / cAdvisor
    │ Metrics
    ▼
-Prometheus
+Prometheus  (http://localhost:9090)
    │
    ▼
-Grafana
+Grafana     (http://localhost:3000)
 ```
 
-Prometheus est accessible à :
+---
 
-```text
-http://localhost:9090
-```
+# 🧰 FabLab : boîtier et câblage
 
-Grafana :
+Le dossier `fablab/` contient :
 
-```text
-http://localhost:3000
-```
+- le **boîtier** du capteur : modèle Fusion 360 (script de génération), fichiers d'impression 3D (STL) et de découpe laser (SVG) ;
+- le **schéma électrique** du boîtier : `fablab/montage_electrique.png` (et `.svg`).
 
 ---
 
@@ -607,63 +629,44 @@ http://localhost:3000
 
 ## Frontend
 
-Entrer dans le dossier :
-
 ```bash
 cd frontend
-```
-
-Installer les dépendances :
-
-```bash
 npm install
-```
-
-Lancer Vite :
-
-```bash
 npm run dev
 ```
 
----
-
 ## Backend
 
-Le backend est exécuté dans Docker.
-
-Pour suivre ses logs :
+Le backend est exécuté dans Docker avec rechargement automatique (`--reload`).
 
 ```bash
 docker compose logs -f backend
 ```
 
-L'API FastAPI est accessible sur :
+Documentation Swagger : http://localhost:8000/docs
 
-```text
-http://localhost:8000
+## IA anomalies
+
+```bash
+docker compose up -d --build anomaly
+docker compose logs -f anomaly
 ```
 
-Documentation Swagger :
+Entraînement : bouton **« Entraîner le modèle »** sur le dashboard (boîtier au calme pendant au moins 30 min), ou `POST http://localhost:8002/api/anomaly/train`.
 
-```text
-http://localhost:8000/docs
-```
+## Firmware ESP8266
+
+Ouvrir `sentinel-iot/` dans VS Code avec PlatformIO, puis **Upload**.
 
 ---
 
 # 🧪 Tests
 
-Les tests backend sont prévus avec :
+Les tests ont été réalisés manuellement de bout en bout (boîtier → MQTT → backend → dashboard).
 
-```text
-pytest
-```
+L'IA anomalies s'auto-évalue à chaque entraînement (fausses alertes sur des données jamais vues, délai de détection d'une dérive simulée).
 
-Lancer les tests :
-
-```bash
-pytest
-```
+Des tests automatisés backend (`pytest`) restent à écrire.
 
 ---
 
@@ -673,7 +676,7 @@ La démonstration finale reproduit un scénario d'incident sur une infrastructur
 
 ### 1. État normal
 
-Les capteurs transmettent leurs données.
+Les capteurs transmettent leurs données toutes les 2 s, et la carte IA affiche « Comportement normal ».
 
 ```text
 Température : normale
@@ -684,59 +687,39 @@ Présence    : aucune
 
 ### 2. Détection d'une présence
 
-Le capteur PIR détecte un mouvement.
+Le capteur PIR détecte un mouvement : la LED bleue s'allume et une alerte « Mouvement (PIR) » apparaît.
 
 ```text
-PIR
- ↓
-ESP8266
- ↓
-MQTT
- ↓
-Backend
- ↓
-Alerte
+PIR → ESP8266 → MQTT → Backend → Alerte
 ```
 
 ### 3. Détection vidéo
 
-La webcam détecte une présence humaine.
+La webcam détecte une personne : alerte « Intrusion (caméra) ».
 
 ```text
-Webcam
- ↓
-YOLO
- ↓
-Person detected
- ↓
-Backend
- ↓
-Alerte
+Webcam → YOLO → personne détectée → MQTT → Backend → Alerte
 ```
 
 ### 4. Anomalie
 
-Le système détecte un comportement inhabituel dans les données.
+On chauffe le DHT22 avec la main (ou on approche du gaz du MQ-2) : l'IA détecte un comportement inhabituel avant tout seuil fixe, et affiche l'explication (« la température monte vite… »).
 
-### 5. Réaction de l'opérateur
+### 5. Alarme gaz
 
-L'opérateur déclenche l'alarme depuis le dashboard.
+Si le gaz dépasse le seuil, la LED rouge du boîtier clignote, même sans réseau.
+
+### 6. Réaction de l'opérateur
+
+L'opérateur clôture les alertes depuis le dashboard et peut commander la LED du boîtier via MQTT.
 
 ```text
-Dashboard
-    ↓
-FastAPI
-    ↓
-MQTT
-    ↓
-ESP8266
-    ↓
-LED + Buzzer
+Commande → MQTT (sentinel/esp8266/cmd) → ESP8266 → LED
 ```
 
-### 6. Retour à la normale
+### 7. Retour à la normale
 
-L'opérateur constate la résolution de l'incident et supervise le retour à l'état normal.
+Les alertes passent en « FIN » automatiquement quand la situation redevient normale.
 
 ---
 
@@ -751,17 +734,21 @@ SENTINEL-X vise à démontrer qu'une infrastructure industrielle isolée peut di
 - **observable** ;
 - **capable de réagir en temps réel**.
 
-L'approche Edge permet notamment de conserver les traitements critiques localement, sans dépendre systématiquement d'un service Cloud.
+L'approche Edge permet de conserver les traitements critiques localement, sans dépendre d'un service Cloud.
 
 ---
 
 # 👥 Équipe
 
-Projet réalisé dans le cadre du workshop **EPSI BAC+4**.
+Projet réalisé dans le cadre du workshop **EPSI M1 DEV** — Groupe 1.
 
 **Projet : SENTINEL-X**
 
 > Mission : construire l'avant-poste industriel du futur.
+
+| Membre | Rôle |
+|---|---|
+| _à compléter_ | _à compléter_ |
 
 ---
 
