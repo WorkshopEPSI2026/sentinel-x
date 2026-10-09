@@ -2,8 +2,12 @@ import cv2
 import requests
 import time
 import threading
+import subprocess
+import imageio_ffmpeg
+from datetime import datetime
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,9 +18,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 CAMERA_INDEX = 0
 AI_URL = "http://127.0.0.1:8001/detect"
-# Intervalle entre deux analyses IA
+
 ANALYSIS_INTERVAL = 1.0
 JPEG_QUALITY = 80
+
+# Dossier de stockage des incidents vidéo
+RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Codec vidéo
+VIDEO_CODEC = "mp4v"
 
 
 # ============================================================================
@@ -62,6 +73,171 @@ persons_count = 0
 ai_available = False
 
 lock = threading.Lock()
+
+
+# ============================================================================
+# ÉTAT DE L'ENREGISTREMENT
+# ============================================================================
+
+recording = False
+video_writer = None
+recording_filename = None
+recording_started_at = None
+
+recording_lock = threading.Lock()
+
+
+def start_recording():
+    """
+    Démarre un nouvel enregistrement vidéo.
+    """
+
+    global recording
+    global video_writer
+    global recording_filename
+    global recording_started_at
+
+    with recording_lock:
+
+        # Un enregistrement est déjà en cours.
+        if recording:
+            return {
+                "recording": True,
+                "filename": recording_filename,
+                "message": "Enregistrement déjà en cours",
+            }
+
+        # Récupérer la résolution réelle de la webcam.
+        width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = camera.get(cv2.CAP_PROP_FPS)
+
+        # Certaines webcams retournent 0 ou une valeur invalide.
+        if fps <= 0 or fps > 120:
+            fps = 20.0
+
+        timestamp = datetime.now().strftime(
+            "%Y-%m-%d_%H-%M-%S"
+        )
+
+        filename = (
+            f"incident_{timestamp}.mp4"
+        )
+
+        filepath = RECORDINGS_DIR / filename
+
+        fourcc = cv2.VideoWriter_fourcc(
+            *VIDEO_CODEC
+        )
+
+        writer = cv2.VideoWriter(
+            str(filepath),
+            fourcc,
+            fps,
+            (width, height),
+        )
+
+        if not writer.isOpened():
+            raise RuntimeError(
+                "Impossible de créer le fichier vidéo."
+            )
+
+        video_writer = writer
+        recording = True
+        recording_filename = filename
+        recording_started_at = datetime.now()
+
+        print(
+            f"[RECORDING] Démarrage : {filepath}"
+        )
+
+        return {
+            "recording": True,
+            "filename": filename,
+            "started_at": recording_started_at.isoformat(),
+        }
+
+def convert_to_h264(video_path: Path) -> bool:
+    """Convertit une vidéo en H.264 compatible avec les navigateurs."""
+    output_path = video_path.with_name(
+        f"{video_path.stem}_converted.mp4"
+    )
+
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+
+    try:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-i", str(video_path),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-an",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output_path.replace(video_path)
+        print(f"[RECORDING] Vidéo convertie en H.264 : {video_path.name}")
+        return True
+
+    except (subprocess.CalledProcessError, OSError) as exc:
+        print(f"[RECORDING] Échec de conversion : {exc}")
+        output_path.unlink(missing_ok=True)
+        return False
+
+def stop_recording():
+    """
+    Arrête l'enregistrement actuel.
+    """
+
+    global recording
+    global video_writer
+    global recording_filename
+    global recording_started_at
+
+    with recording_lock:
+
+        if not recording or video_writer is None:
+            return {
+                "recording": False,
+                "message": "Aucun enregistrement en cours",
+            }
+
+        filename = recording_filename
+        started_at = recording_started_at
+
+        video_writer.release()
+
+        video_writer = None
+        recording = False
+        recording_filename = None
+        recording_started_at = None
+
+        print(
+            f"[RECORDING] Arrêt : {filename}"
+        )
+
+        # La conversion s'effectue après la fermeture du fichier.
+        converted = convert_to_h264(filepath)
+        
+        return {
+            "recording": False,
+            "filename": filename,
+            "started_at": (
+                started_at.isoformat()
+                if started_at
+                else None
+            ),
+            "stopped_at": datetime.now().isoformat(),
+            "converted_to_h264": converted,
+        }
+
 
 
 # ============================================================================
@@ -153,17 +329,17 @@ def ai_worker():
 
                     detections = result.get(
                         "detections",
-                        []
+                        [],
                     )
 
                     person_detected = result.get(
                         "person_detected",
-                        False
+                        False,
                     )
 
                     persons_count = result.get(
                         "persons_count",
-                        0
+                        0,
                     )
 
                     ai_available = True
@@ -321,6 +497,8 @@ def annotate_frame(frame):
 
 def generate_frames():
 
+    global latest_frame
+
     while True:
 
         # ------------------------------------------------------------
@@ -343,7 +521,6 @@ def generate_frames():
 
         with frame_lock:
 
-            global latest_frame
             latest_frame = frame.copy()
 
         # ------------------------------------------------------------
@@ -353,6 +530,16 @@ def generate_frames():
         display_frame = annotate_frame(
             frame
         )
+
+        # ------------------------------------------------------------
+        # ENREGISTREMENT
+        # ------------------------------------------------------------
+
+        with recording_lock:
+
+            if recording and video_writer is not None:
+
+                video_writer.write(display_frame)
 
         # ------------------------------------------------------------
         # Encodage JPEG
@@ -416,12 +603,53 @@ def status():
 
     with lock:
 
-        return {
+        ai_state = {
             "ai_available": ai_available,
             "person_detected": person_detected,
             "persons_count": persons_count,
             "detections": detections,
         }
+
+    with recording_lock:
+
+        recording_state = {
+            "recording": recording,
+            "filename": recording_filename,
+            "started_at": (
+                recording_started_at.isoformat()
+                if recording_started_at
+                else None
+            ),
+        }
+
+    return {
+        **ai_state,
+        **recording_state,
+    }
+
+
+# ============================================================================
+# ENREGISTREMENT
+# ============================================================================
+
+@app.post("/recording/start")
+def recording_start():
+
+    try:
+        return start_recording()
+
+    except RuntimeError as exc:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/recording/stop")
+def recording_stop():
+
+    return stop_recording()
 
 
 # ============================================================================

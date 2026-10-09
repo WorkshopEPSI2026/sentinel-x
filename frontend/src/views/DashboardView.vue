@@ -14,6 +14,7 @@ import TelemetryChart from "../components/telemetry/TelemetryChart.vue";
 import AlertList from "../components/alerts/AlertList.vue";
 
 import { useCamera } from "../composables/useCamera";
+import RecordingsList from "../components/dashboard/RecordingsList.vue";
 
 const router = useRouter();
 const { status: cameraStatus, connected: cameraConnected } = useCamera();
@@ -54,22 +55,22 @@ async function handleLogout() {
             Dashboard
           </RouterLink>
 
-          <RouterLink
-            to="/surveillance"
-            class="text-sm text-gray-600 transition hover:text-gray-900"
-          >
-            Surveillance
-          </RouterLink>
-
-          <RouterLink
-            to="/sensors"
+          <a
+            href="#sensors"
             class="text-sm text-gray-600 transition hover:text-gray-900"
           >
             Capteurs
-          </RouterLink>
+          </a>
 
-          <RouterLink
-            to="/alerts"
+          <a
+            href="#surveillance"
+            class="text-sm text-gray-600 transition hover:text-gray-900"
+          >
+            Surveillance
+          </a>
+
+          <a
+            href="#alerts"
             class="flex items-center gap-2 text-sm text-gray-600 transition hover:text-gray-900"
           >
             Alertes
@@ -80,32 +81,37 @@ async function handleLogout() {
             >
               {{ activeAlerts.length }}
             </span>
-          </RouterLink>
+          </a>
 
-          <RouterLink
-            to="/history"
+          <a
+            href="#history"
             class="text-sm text-gray-600 transition hover:text-gray-900"
           >
             Historique
-          </RouterLink>
+          </a>
         </div>
 
         <!-- User -->
         <div class="flex items-center gap-2">
-          <RouterLink
-            to="/profile"
-            class="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
-          >
-            {{ user?.username ?? "Utilisateur" }}
-          </RouterLink>
+          <RouterLink to="/profile">
+            <div class="flex items-center gap-2">
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-900 text-xl font-bold text-white"
+              >
+                {{ user?.username?.charAt(0).toUpperCase() }}
+              </div>
 
-          <button
-            type="button"
-            class="hidden rounded-lg px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 sm:block"
-            @click="handleLogout"
-          >
-            Déconnexion
-          </button>
+              <div>
+                <h2 class="text-sm font-semibold text-gray-900">
+                  {{ user?.username }}
+                </h2>
+
+                <p class="text-xs text-gray-500">
+                  {{ user?.email }}
+                </p>
+              </div>
+            </div>
+          </RouterLink>
         </div>
       </div>
     </nav>
@@ -126,7 +132,10 @@ async function handleLogout() {
             Edge Security & IoT
           </span>
 
-          <h1 class="mt-5 text-4xl font-bold tracking-tight text-gray-900">
+          <h1
+            id="sensors"
+            class="mt-5 text-4xl font-bold tracking-tight text-gray-900"
+          >
             Centre de supervision
           </h1>
 
@@ -165,7 +174,7 @@ async function handleLogout() {
       <!-- ALERTES                                               -->
       <!-- ==================================================== -->
 
-      <section class="mt-8">
+      <section id="alerts" class="mt-8">
         <ActiveAlerts :alerts="alerts" :active-alerts="activeAlerts" />
       </section>
 
@@ -173,7 +182,7 @@ async function handleLogout() {
       <!-- GRAPHIQUES                                            -->
       <!-- ==================================================== -->
 
-      <section class="mt-10">
+      <section id="surveillance" class="mt-10">
         <div class="mb-6">
           <h2 class="text-2xl font-bold tracking-tight text-gray-900">
             Télémétrie
@@ -229,7 +238,7 @@ async function handleLogout() {
       <!-- HISTORIQUE DES ALERTES                                -->
       <!-- ==================================================== -->
 
-      <section class="mt-10">
+      <section id="history" class="mt-10">
         <div class="mb-6">
           <h2 class="text-2xl font-bold tracking-tight text-gray-900">
             Historique des alertes
@@ -245,17 +254,22 @@ async function handleLogout() {
         </div>
       </section>
 
+      <div class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <RecordingsList />
+      </div>
+
       <!-- ==================================================== -->
       <!-- FOOTER                                                -->
       <!-- ==================================================== -->
-
-      <footer
-        class="mt-12 flex flex-col gap-2 border-t border-gray-200 py-6 text-sm text-gray-500 md:flex-row md:items-center md:justify-between"
+    </div>
+    <footer class="border-t border-gray-200 bg-white">
+      <div
+        class="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-6 text-sm text-gray-500 md:flex-row md:items-center md:justify-between"
       >
         <p>© 2026 Sentinel-X</p>
 
         <p>Edge Security & IoT</p>
-      </footer>
-    </div>
+      </div>
+    </footer>
   </main>
 </template>

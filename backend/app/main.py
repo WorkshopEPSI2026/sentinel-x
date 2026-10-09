@@ -8,6 +8,7 @@ from app.routers.alerts import router as alerts_router
 from app.routers.auth import router as auth_router
 from app.routers.telemetry import router as telemetry_router
 from app.routers.websocket import router as websocket_router
+from app.routers import recordings
 from app.mqtt_client import start_mqtt
 
 app = FastAPI(title="Sentinel-X API")
@@ -29,6 +30,7 @@ app.include_router(auth_router)
 app.include_router(telemetry_router)
 app.include_router(alerts_router)
 app.include_router(websocket_router)
+app.include_router(recordings.router)
 
 @app.on_event("startup")
 async def startup():
