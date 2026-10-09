@@ -11,6 +11,22 @@ from app.routers.websocket import router as websocket_router
 from app.routers import recordings
 from app.mqtt_client import start_mqtt
 
+from fastapi.responses import Response
+
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+
+from app.metrics import (
+    temperature_gauge,
+    humidity_gauge,
+    gas_gauge,
+    presence_gauge,
+    esp8266_status,
+    mqtt_messages_total,
+    alerts_total,
+    ai_detections_total,
+    anomalies_total,
+)
+
 app = FastAPI(title="Sentinel-X API")
 
 # Start MQTT client
@@ -49,3 +65,10 @@ def health():
         "status": "ok",
         "service": "sentinel-backend",
     }
+
+@app.get("/metrics")
+def metrics():
+    return Response(
+        content=generate_latest(REGISTRY),
+        media_type=CONTENT_TYPE_LATEST,
+    )

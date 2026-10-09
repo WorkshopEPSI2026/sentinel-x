@@ -8,6 +8,16 @@ from datetime import timezone
 
 import paho.mqtt.client as mqtt
 
+from app.metrics import (
+    temperature_gauge,
+    humidity_gauge,
+    gas_gauge,
+    presence_gauge,
+    esp8266_status,
+    mqtt_messages_total,
+    alerts_total,
+)
+
 from app.core.database import SessionLocal
 from app.schemas.telemetry import TelemetryCreate
 from app.services import websocket as websocket_service
@@ -73,6 +83,12 @@ def on_connect(client, userdata, flags, rc, properties=None):
             TOPIC_EVENTS,
             TOPIC_ALERTS,
         ):
+
+        for topic in (
+            TOPIC_TELEMETRY,
+            TOPIC_EVENTS,
+            TOPIC_ALERTS,
+        ):
             client.subscribe(topic)
 
             print(
@@ -96,6 +112,7 @@ def handle_telemetry(payload: dict):
 
     db = SessionLocal()
 
+
     try:
 
         saved = create_telemetry(
@@ -110,7 +127,7 @@ def handle_telemetry(payload: dict):
         # On diffuse la mesure enregistrée
         # avec son id et sa date.
         message = {
-            **telemetry.model_dump(),
+            **telemetry_data,
             "id": saved.id,
             "created_at": (
                 saved.created_at
@@ -118,6 +135,7 @@ def handle_telemetry(payload: dict):
                 .isoformat()
             ),
         }
+
 
     except Exception as exc:
 
@@ -128,6 +146,7 @@ def handle_telemetry(payload: dict):
         )
 
         message = payload
+
 
     finally:
 
@@ -219,6 +238,7 @@ def handle_alert(
 
     db = SessionLocal()
 
+
     try:
 
         saved = create_alert(
@@ -239,6 +259,7 @@ def handle_alert(
             "created_at": saved.created_at.isoformat(),
         }
 
+
     except Exception as exc:
 
         db.rollback()
@@ -249,6 +270,7 @@ def handle_alert(
         )
 
         return
+
 
     finally:
 
@@ -362,7 +384,12 @@ def on_message(
 
         return
 
+    # --------------------------------------------------------
+    # Traitement du message
+    # --------------------------------------------------------
+
     try:
+
 
         if message.topic == TOPIC_TELEMETRY:
 
@@ -394,6 +421,11 @@ def on_message(
             f"{message.topic} : {exc}"
         )
 
+        print(
+            f"Erreur traitement "
+            f"{message.topic} : {exc}"
+        )
+
 
 # ============================================================================
 # DÉMARRAGE MQTT
@@ -408,6 +440,11 @@ def start_mqtt():
 
     client.on_connect = on_connect
     client.on_message = on_message
+
+    client.reconnect_delay_set(
+        min_delay=1,
+        max_delay=10,
+    )
 
     client.reconnect_delay_set(
         min_delay=1,
