@@ -4,3 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 include/secrets.h
+ai/anomaly/data/
+ai/anomaly/models/anomaly_model.joblib
+backend/models/
+__pycache__/

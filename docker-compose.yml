@@ -42,28 +42,31 @@ services:
       - sentinel
 
 
-  # Détection d'anomalies (Isolation Forest) : voir ai/anomaly/README.md
-  # anomaly:
-  #   build: ./ai/anomaly
-  #   container_name: sentinel-anomaly
-  #   restart: unless-stopped
+  # IA - Détection d'anomalies (Isolation Forest) : voir ai/anomaly/README.md
+  anomaly:
+    build: ./ai/anomaly
+    container_name: sentinel-anomaly
+    restart: unless-stopped
 
-  #   environment:
-  #     MQTT_HOST: mqtt
-  #     MQTT_PORT: 1883
-  #     TOPIC_TELEMETRY: sentinel/esp8266/telemetry
-  #     TOPIC_ALERTS: sentinel/esp8266/alerts
-  #     CONSECUTIVE: 3
+    environment:
+      MQTT_HOST: mqtt
+      MQTT_PORT: 1883
+      TOPIC_TELEMETRY: sentinel/esp8266/telemetry
+      TOPIC_ALERTS: sentinel/esp8266/alerts
+      CONSECUTIVE: 3
 
-  #   volumes:
-  #     - ./ai/anomaly/data:/app/data
-  #     - ./ai/anomaly/models:/app/models
+    volumes:
+      - ./ai/anomaly/data:/app/data
+      - ./ai/anomaly/models:/app/models
 
-  #   depends_on:
-  #     - mqtt
+    ports:
+      - "8002:8002"
 
-  #   networks:
-  #     - sentinel
+    depends_on:
+      - mqtt
+
+    networks:
+      - sentinel
 
 
   frontend:

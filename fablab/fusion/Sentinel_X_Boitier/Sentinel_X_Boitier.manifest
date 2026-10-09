@@ -1,0 +1,10 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "script",
+  "author": "Sentinel-X G1",
+  "description": {
+    "": "Génère le boîtier Sentinel-X G1 (boîte + couvercle) pour impression 3D"
+  },
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}

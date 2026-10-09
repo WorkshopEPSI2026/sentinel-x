@@ -9,6 +9,7 @@ import SystemStatus from "../components/dashboard/SystemStatus.vue";
 import CameraCard from "../components/dashboard/CameraCard.vue";
 import SensorOverview from "../components/dashboard/SensorOverview.vue";
 import ActiveAlerts from "../components/dashboard/ActiveAlerts.vue";
+import AnomalyCard from "../components/dashboard/AnomalyCard.vue";
 
 import TelemetryChart from "../components/telemetry/TelemetryChart.vue";
 import AlertList from "../components/alerts/AlertList.vue";
@@ -167,6 +168,14 @@ async function handleLogout() {
 
       <section class="mt-8">
         <ActiveAlerts :alerts="alerts" :active-alerts="activeAlerts" />
+      </section>
+
+      <!-- ==================================================== -->
+      <!-- IA - DETECTION D'ANOMALIES                           -->
+      <!-- ==================================================== -->
+
+      <section class="mt-8">
+        <AnomalyCard />
       </section>
 
       <!-- ==================================================== -->

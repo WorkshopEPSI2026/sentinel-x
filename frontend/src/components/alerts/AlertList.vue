@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Alert } from "../../composables/useAlerts";
+import AnomalyExplain from "./AnomalyExplain.vue";
 
 defineProps<{
   alerts: Alert[];
@@ -60,6 +61,10 @@ function valueText(alert: Alert): string {
               {{ source(alert) }} · {{ alert.device_id }}
               <span v-if="valueText(alert)"> · {{ valueText(alert) }}</span>
             </p>
+            <AnomalyExplain
+              v-if="alert.type === 'ANOMALY' && alert.state === 'TRIGGERED'"
+              :detail="alert.detail"
+            />
           </div>
         </div>
 

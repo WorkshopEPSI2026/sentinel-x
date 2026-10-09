@@ -89,8 +89,8 @@
 #define RECONNECT_MS 5000
 
 // Seuils MQ-2
-#define GAS_ALARM_ON 50
-#define GAS_ALARM_OFF 45
+#define GAS_ALARM_ON 90
+#define GAS_ALARM_OFF 75
 
 // Temps de chauffe du MQ-2
 #define MQ2_WARMUP_MS 60000
