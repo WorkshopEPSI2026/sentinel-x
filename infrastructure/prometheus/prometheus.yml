@@ -1,14 +1,25 @@
 global:
-  scrape_interval: 15s
+  scrape_interval: 5s
+  evaluation_interval: 5s
 
 scrape_configs:
 
-  - job_name: prometheus
+  # Prometheus lui-même
+  - job_name: "prometheus"
     static_configs:
       - targets:
-          - prometheus:9090
+          - "prometheus:9090"
 
-  - job_name: backend
+  # Backend FastAPI
+  - job_name: "backend"
+    metrics_path: "/metrics"
     static_configs:
       - targets:
-          - backend:8000
+          - "backend:8000"
+
+  # Métriques des conteneurs Docker
+  - job_name: "cadvisor"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets:
+          - "cadvisor:8080"

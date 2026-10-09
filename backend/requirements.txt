@@ -13,3 +13,6 @@ email-validator
 
 # MQTT
 paho-mqtt
+
+prometheus-client
+prometheus-fastapi-instrumentator
